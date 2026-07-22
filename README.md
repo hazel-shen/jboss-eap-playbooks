@@ -20,16 +20,16 @@
 
 ```text
 jboss-eap-audit/
-├── ansible.cfg
-├── collections/requirements.yml
-├── docs/check-mapping.md
-├── inventory/hosts.yml
-├── playbooks/jboss_eap_audit.yml
+├── ansible.cfg                            // Ansible 專案設定檔，用來控制執行行為。
+├── collections/requirements.yml           // Ansible Collection 的相依需求。
+├── docs/check-mapping.md                 
+├── inventory/hosts.yml                    // 本機測試使用的 Ansible Inventory。
+├── playbooks/jboss_eap_audit.yml          // 可以直接執行的入口
 ├── requirements.txt
-└── roles/jboss_eap_audit/
-    ├── defaults/main.yml
-    ├── tasks/
-    └── templates/report.md.j2
+└── roles/jboss_eap_audit/                 // 存放可以重複使用的 Ansible Role
+    ├── defaults/main.yml                  // 定義可以被覆寫的預設變數
+    ├── tasks/                             // 定義實際要執行的操作
+    └── templates/report.md.j2             // 存放 Jinja2 範本
 ```
 
 ## AAP 設定
