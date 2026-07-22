@@ -1,0 +1,188 @@
+---
+- name: Inspect required JBoss EAP files
+  ansible.builtin.stat:
+    path: "{{ item.path }}"
+  loop:
+    - name: version
+      path: "{{ jboss_version_file }}"
+    - name: host_xml
+      path: "{{ jboss_host_config }}"
+    - name: domain_xml
+      path: "{{ jboss_domain_config }}"
+    - name: init_config
+      path: "{{ jboss_init_config }}"
+    - name: keystore
+      path: "{{ jboss_keystore_path }}"
+  register: jboss_file_stats
+
+- name: Create a file status lookup
+  ansible.builtin.set_fact:
+    jboss_files: >-
+      {{
+        jboss_files | default({})
+        | combine({item.item.name: item.stat})
+      }}
+  loop: "{{ jboss_file_stats.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+
+- name: Read the JBoss EAP version file
+  ansible.builtin.slurp:
+    src: "{{ jboss_version_file }}"
+  when: jboss_files.version.exists
+  register: jboss_version_raw
+
+- name: Read the legacy init configuration
+  ansible.builtin.slurp:
+    src: "{{ jboss_init_config }}"
+  when: jboss_files.init_config.exists
+  register: jboss_init_config_raw
+  no_log: true
+
+- name: Extract non-commented JAVA_HOME, JBOSS_USER, and JBOSS_MODE settings
+  ansible.builtin.set_fact:
+    jboss_init_settings: >-
+      {{
+        (jboss_init_config_raw.content | b64decode)
+        | regex_findall('(?m)^(?:JAVA_HOME|JBOSS_USER|JBOSS_MODE)=.*$')
+      }}
+  when: jboss_files.init_config.exists
+
+- name: Default legacy init settings when the file does not exist
+  ansible.builtin.set_fact:
+    jboss_init_settings: []
+  when: not jboss_files.init_config.exists
+
+- name: Read host.xml
+  ansible.builtin.slurp:
+    src: "{{ jboss_host_config }}"
+  when: jboss_files.host_xml.exists
+  register: jboss_host_xml_raw
+  no_log: true
+
+- name: Read domain.xml
+  ansible.builtin.slurp:
+    src: "{{ jboss_domain_config }}"
+  when: jboss_files.domain_xml.exists
+  register: jboss_domain_xml_raw
+  no_log: true
+
+- name: Query the host name from host.xml
+  community.general.xml:
+    xmlstring: "{{ jboss_host_xml_raw.content | b64decode }}"
+    xpath: "/*[local-name()='host']"
+    content: attribute
+  delegate_to: localhost
+  become: false
+  when: jboss_files.host_xml.exists
+  register: jboss_host_root
+  changed_when: false
+  no_log: true
+
+- name: Query bind-address properties from host.xml
+  community.general.xml:
+    xmlstring: "{{ jboss_host_xml_raw.content | b64decode }}"
+    xpath: "//*[local-name()='property' and starts-with(@name, 'jboss.bind.address')]"
+    content: attribute
+  delegate_to: localhost
+  become: false
+  when: jboss_files.host_xml.exists
+  register: jboss_bind_properties
+  changed_when: false
+  no_log: true
+
+- name: Query configured servers from host.xml
+  community.general.xml:
+    xmlstring: "{{ jboss_host_xml_raw.content | b64decode }}"
+    xpath: "//*[local-name()='servers']/*[local-name()='server']"
+    content: attribute
+  delegate_to: localhost
+  become: false
+  when: jboss_files.host_xml.exists
+  register: jboss_host_servers
+  changed_when: false
+  no_log: true
+
+- name: Build the configured server name list
+  ansible.builtin.set_fact:
+    jboss_server_names: >-
+      {{
+        (jboss_host_servers | default({})).matches
+        | default([])
+        | map(attribute='server.name')
+        | list
+      }}
+
+- name: Query JVM settings for each configured server
+  ansible.builtin.include_tasks: server_xml.yml
+  loop: "{{ jboss_server_names }}"
+  loop_control:
+    loop_var: jboss_server_name
+    label: "{{ jboss_server_name }}"
+
+- name: Query selected domain.xml settings
+  ansible.builtin.include_tasks: domain_xml.yml
+  loop:
+    - name: server_groups
+      xpath: "//*[local-name()='server-groups']/*[local-name()='server-group']"
+    - name: datasources
+      xpath: "//*[local-name()='datasource']"
+    - name: jdbc_drivers
+      xpath: "//*[local-name()='drivers']/*[local-name()='driver']"
+    - name: socket_binding_groups
+      xpath: "//*[local-name()='socket-binding-group']"
+    - name: handlers
+      xpath: "//*[local-name()='handler']"
+    - name: local_caches
+      xpath: "//*[local-name()='local-cache']"
+    - name: expression_filters
+      xpath: "//*[local-name()='expression-filter']"
+    - name: response_headers
+      xpath: "//*[local-name()='response-header']"
+    - name: filters
+      xpath: "//*[local-name()='filter']"
+    - name: rewrites
+      xpath: "//*[local-name()='rewrite']"
+    - name: max_parameters
+      xpath: "//*[@max-parameters]"
+    - name: timeout_settings
+      xpath: "//*[@request-timeout or @no-request-timeout or @request-parse-timeout]"
+    - name: system_properties
+      xpath: "//*[local-name()='system-properties']/*[local-name()='property']"
+  loop_control:
+    loop_var: jboss_domain_query
+    label: "{{ jboss_domain_query.name }}"
+  when: jboss_files.domain_xml.exists
+
+- name: Inspect the configured keystore without exposing its password
+  ansible.builtin.command:
+    argv:
+      - keytool
+      - -list
+      - -v
+      - -keystore
+      - "{{ jboss_keystore_path }}"
+    stdin: "{{ jboss_keystore_password }}"
+    stdin_add_newline: true
+  environment:
+    LC_ALL: C
+  when:
+    - jboss_files.keystore.exists
+    - jboss_keystore_password | length > 0
+  register: jboss_keytool
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Keep only certificate validity lines in the audit result
+  ansible.builtin.set_fact:
+    jboss_keystore_validity: >-
+      {{
+        jboss_keytool.stdout_lines
+        | default([])
+        | select('match', '^Valid from:')
+        | list
+      }}
+  when:
+    - jboss_keytool is defined
+    - not (jboss_keytool.skipped | default(false))

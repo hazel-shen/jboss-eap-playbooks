@@ -1,0 +1,2 @@
+# Install these Python dependencies in the AAP Execution Environment.
+lxml>=4.9.0

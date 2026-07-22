@@ -1,0 +1,31 @@
+---
+jboss_eap_home: /opt/jboss-eap
+jboss_user: jboss
+
+jboss_host_config: "{{ jboss_eap_home }}/domain/configuration/host.xml"
+jboss_domain_config: "{{ jboss_eap_home }}/domain/configuration/domain.xml"
+jboss_version_file: "{{ jboss_eap_home }}/version.txt"
+jboss_init_config: "{{ jboss_eap_home }}/bin/init.d/jboss-eap.conf"
+
+jboss_keystore_path: "{{ jboss_eap_home }}/domain/configuration/taiwanlife.keystore"
+# Supply this using an AAP encrypted survey field, custom credential, or Ansible Vault.
+jboss_keystore_password: ""
+
+jboss_expected_java_package: java-17-openjdk-headless
+jboss_service_candidates:
+  - jboss-eap.service
+  - eap-domain-primary.service
+  - eap-domain-secondary.service
+  - eap-domain-exporter.service
+  - jboss.service
+
+# AWX_PRIVATE_DATA_DIR normally points to /runner in an AAP job.
+jboss_audit_output_dir: >-
+  {{
+    (lookup('ansible.builtin.env', 'AWX_PRIVATE_DATA_DIR') | length > 0)
+    | ternary(
+        lookup('ansible.builtin.env', 'AWX_PRIVATE_DATA_DIR') ~ '/artifacts',
+        playbook_dir ~ '/../reports'
+      )
+  }}
+

@@ -1,0 +1,76 @@
+---
+- name: Look up the JBoss operating system account
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ jboss_user }}"
+    fail_key: false
+
+- name: Normalize the JBoss account lookup result
+  ansible.builtin.set_fact:
+    jboss_account_entry: >-
+      {{
+        (ansible_facts.getent_passwd | default({})).get(jboss_user)
+        | default([], true)
+      }}
+    jboss_account_exists: >-
+      {{
+        (
+          (ansible_facts.getent_passwd | default({})).get(jboss_user)
+          | default([], true)
+          | length
+        ) > 0
+      }}
+
+- name: Gather installed package facts
+  ansible.builtin.package_facts:
+    manager: auto
+  failed_when: false
+
+- name: Build the list of installed Java 17 packages
+  ansible.builtin.set_fact:
+    jboss_java17_packages: >-
+      {{
+        ansible_facts.packages
+        | default({})
+        | dict2items
+        | selectattr('key', 'match', '^java-17-openjdk')
+        | list
+      }}
+
+- name: Find JBoss EAP installation directories under /opt
+  ansible.builtin.find:
+    paths: /opt
+    patterns: jboss-eap*
+    file_type: directory
+    recurse: false
+  register: jboss_install_dirs
+  changed_when: false
+
+- name: Gather service facts
+  ansible.builtin.service_facts:
+
+- name: Read selected non-secret systemd unit properties
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - show
+      - --property=FragmentPath
+      - --property=User
+      - --property=Group
+      - --property=WorkingDirectory
+      - --property=EnvironmentFiles
+      - "{{ item }}"
+  loop: "{{ jboss_service_candidates }}"
+  when: item in (ansible_facts.services | default({}))
+  register: jboss_systemd_units
+  changed_when: false
+  failed_when: false
+
+- name: Check firewalld configuration for the active zone
+  ansible.builtin.command:
+    argv:
+      - firewall-cmd
+      - --list-all
+  register: jboss_firewalld
+  changed_when: false
+  failed_when: false

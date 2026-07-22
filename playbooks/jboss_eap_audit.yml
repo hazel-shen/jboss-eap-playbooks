@@ -1,0 +1,9 @@
+---
+- name: Audit existing JBoss EAP domain hosts
+  hosts: jboss_eap
+  gather_facts: true
+  become: true
+
+  roles:
+    - role: jboss_eap_audit
+

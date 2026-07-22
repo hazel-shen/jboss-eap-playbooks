@@ -1,0 +1,58 @@
+---
+- name: "Query {{ jboss_server_name }} server attributes"
+  community.general.xml:
+    xmlstring: "{{ jboss_host_xml_raw.content | b64decode }}"
+    xpath: "//*[local-name()='servers']/*[local-name()='server' and @name='{{ jboss_server_name }}']"
+    content: attribute
+  delegate_to: localhost
+  become: false
+  register: jboss_server_attributes_query
+  changed_when: false
+  no_log: true
+
+- name: "Query {{ jboss_server_name }} heap attributes"
+  community.general.xml:
+    xmlstring: "{{ jboss_host_xml_raw.content | b64decode }}"
+    xpath: "//*[local-name()='server' and @name='{{ jboss_server_name }}']/*[local-name()='jvm']/*[local-name()='heap']"
+    content: attribute
+  delegate_to: localhost
+  become: false
+  register: jboss_server_heap_query
+  changed_when: false
+  no_log: true
+
+- name: "Query {{ jboss_server_name }} JVM options"
+  community.general.xml:
+    xmlstring: "{{ jboss_host_xml_raw.content | b64decode }}"
+    xpath: "//*[local-name()='server' and @name='{{ jboss_server_name }}']/*[local-name()='jvm']//*[local-name()='option']"
+    content: attribute
+  delegate_to: localhost
+  become: false
+  register: jboss_server_options_query
+  changed_when: false
+  no_log: true
+
+- name: "Store {{ jboss_server_name }} JVM audit data"
+  ansible.builtin.set_fact:
+    jboss_server_audit: >-
+      {{
+        jboss_server_audit
+        | combine({
+            jboss_server_name: {
+              'attributes': jboss_server_attributes_query.matches | default([]),
+              'heap': jboss_server_heap_query.matches | default([]),
+              'options': (
+                jboss_server_options_query.matches
+                | default([])
+                | selectattr('option.value', 'defined')
+                | selectattr(
+                    'option.value',
+                    'search',
+                    '(^-Xm[sx]|Use[A-Za-z0-9]+GC|MaxMetaspaceSize=|^-Xlog:|^-Xloggc:)'
+                  )
+                | list
+              )
+            }
+          })
+      }}
+  no_log: true

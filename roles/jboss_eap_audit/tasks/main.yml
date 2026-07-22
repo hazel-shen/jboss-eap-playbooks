@@ -1,0 +1,17 @@
+---
+- name: Initialize audit variables
+  ansible.builtin.set_fact:
+    jboss_domain_audit: {}
+    jboss_server_audit: {}
+    jboss_keystore_validity: []
+    jboss_java17_packages: []
+
+- name: Collect operating system and installation facts
+  ansible.builtin.include_tasks: os.yml
+
+- name: Collect JBoss EAP static configuration
+  ansible.builtin.include_tasks: static_config.yml
+
+- name: Produce the audit report
+  ansible.builtin.include_tasks: report.yml
+
