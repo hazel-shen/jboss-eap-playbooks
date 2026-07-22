@@ -1,0 +1,204 @@
+# JBoss EAP 唯讀檢核報告
+
+- **目標主機：** `{{ inventory_hostname }}`
+- **檢核時間：** `{{ ansible_date_time.iso8601 }}`
+- **JBoss EAP Home：** `{{ jboss_eap_home }}`
+- **執行模式：** 唯讀；未修改受管主機設定
+
+## 基礎檢核摘要
+
+| 檢核項目 | 結果 | 證據 |
+|---|---|---|
+| JBoss 帳號存在 | {{ 'PASS' if jboss_account_exists else 'FAIL' }} | `{{ jboss_user }}` |
+| Java 17 headless | {{ 'PASS' if jboss_expected_java_package in (ansible_facts.packages | default({})) else 'FAIL' }} | `{{ jboss_expected_java_package }}` |
+| JBoss 安裝目錄 | {{ 'PASS' if jboss_install_dirs.matched | int > 0 else 'FAIL' }} | {{ jboss_install_dirs.files | default([]) | map(attribute='path') | join(', ') | default('NOT FOUND', true) }} |
+| version.txt | {{ 'PASS' if jboss_files.version.exists else 'FAIL' }} | `{{ jboss_version_file }}` |
+| host.xml | {{ 'PASS' if jboss_files.host_xml.exists else 'FAIL' }} | `{{ jboss_host_config }}` |
+| domain.xml | {{ 'PASS' if jboss_files.domain_xml.exists else 'FAIL' }} | `{{ jboss_domain_config }}` |
+| Keystore | {{ 'PASS' if jboss_files.keystore.exists else 'WARN' }} | `{{ jboss_keystore_path }}` |
+
+## 作業系統帳號
+
+{% if jboss_account_exists %}
+{% set user_entry = jboss_account_entry %}
+- **User：** `{{ jboss_user }}`
+- **UID：** `{{ user_entry[1] }}`
+- **GID：** `{{ user_entry[2] }}`
+- **Home：** `{{ user_entry[4] }}`
+- **Shell：** `{{ user_entry[5] }}`
+{% else %}
+- `{{ jboss_user }}` 帳號不存在。
+{% endif %}
+
+## Java 17 套件
+
+{% if jboss_java17_packages | length > 0 %}
+```yaml
+{{ jboss_java17_packages | to_nice_yaml(indent=2) }}
+```
+{% else %}
+未找到名稱以 `java-17-openjdk` 開頭的套件。
+{% endif %}
+
+## JBoss EAP 版本
+
+{% if jboss_files.version.exists %}
+```text
+{{ jboss_version_raw.content | b64decode | trim }}
+```
+{% else %}
+`version.txt` 不存在。
+{% endif %}
+
+## Host 與 Bind Address
+
+{% if jboss_files.host_xml.exists %}
+- **Host：** `{{ (jboss_host_root.matches | default([]) | first | default({})).get('host', {}).get('name', 'NOT FOUND') }}`
+
+```yaml
+{{ jboss_bind_properties.matches | default([]) | to_nice_yaml(indent=2) }}
+```
+{% else %}
+無法讀取 `host.xml`。
+{% endif %}
+
+## 啟動設定
+
+### jboss-eap.conf
+
+{% if jboss_init_settings | length > 0 %}
+```text
+{{ jboss_init_settings | join('\n') }}
+```
+{% else %}
+未找到 `JAVA_HOME`、`JBOSS_USER` 或 `JBOSS_MODE` 的有效設定。
+{% endif %}
+
+### systemd 服務
+
+| 服務 | 是否存在 | 狀態 | 開機設定 |
+|---|---|---|---|
+{% for service_name in jboss_service_candidates %}
+{% set service = (ansible_facts.services | default({})).get(service_name, {}) %}
+| `{{ service_name }}` | {{ 'YES' if service else 'NO' }} | {{ service.get('state', 'N/A') }} | {{ service.get('status', 'N/A') }} |
+{% endfor %}
+
+### systemd unit 屬性
+
+{% for result in jboss_systemd_units.results | default([]) %}
+{% if not (result.skipped | default(false)) %}
+#### {{ result.item }}
+
+```text
+{{ result.stdout | default('NOT AVAILABLE') | trim }}
+```
+{% endif %}
+{% else %}
+未找到候選的 JBoss EAP systemd service。
+{% endfor %}
+
+## Firewalld
+
+{% if jboss_firewalld.rc | default(1) == 0 %}
+```text
+{{ jboss_firewalld.stdout | trim }}
+```
+{% else %}
+無法取得 active zone；可能未安裝、未啟動，或權限不足。
+{% endif %}
+
+## Server Group
+
+```yaml
+{{ jboss_domain_audit.server_groups | default([]) | to_nice_yaml(indent=2) }}
+```
+
+## Server 與 JVM／GC 設定
+
+{% if jboss_server_audit | length > 0 %}
+{% for server_name, server in jboss_server_audit.items() %}
+### {{ server_name }}
+
+**Server attributes**
+
+```yaml
+{{ server.attributes | to_nice_yaml(indent=2) }}
+```
+
+**Heap size / max-size**
+
+```yaml
+{{ server.heap | to_nice_yaml(indent=2) }}
+```
+
+**GC、Metaspace 與 GC log 選項**
+
+```yaml
+{{ server.options | to_nice_yaml(indent=2) }}
+```
+{% endfor %}
+{% else %}
+未在 `host.xml` 中找到 server 定義。
+{% endif %}
+
+## Datasource 與 JDBC Driver
+
+### Datasources
+
+```yaml
+{{ jboss_domain_audit.datasources | default([]) | to_nice_yaml(indent=2) }}
+```
+
+### JDBC Drivers
+
+```yaml
+{{ jboss_domain_audit.jdbc_drivers | default([]) | to_nice_yaml(indent=2) }}
+```
+
+## Socket Binding
+
+```yaml
+{{ jboss_domain_audit.socket_binding_groups | default([]) | to_nice_yaml(indent=2) }}
+```
+
+## Handler、Filter、Cache 與 Undertow 設定
+
+{% for section in ['handlers', 'local_caches', 'expression_filters', 'response_headers', 'filters', 'rewrites', 'max_parameters', 'timeout_settings'] %}
+### {{ section }}
+
+```yaml
+{{ jboss_domain_audit.get(section, []) | to_nice_yaml(indent=2) }}
+```
+{% endfor %}
+
+## System Properties
+
+為避免報告外洩機密，名稱疑似包含 `password`、`secret`、`token` 或 `credential` 的值會被遮蔽。
+
+{% for match in jboss_domain_audit.system_properties | default([]) %}
+{% set prop = match.property | default({}) %}
+- `{{ prop.name | default('UNKNOWN') }}` = {% if prop.name | default('') | lower | regex_search('password|secret|token|credential') %}`***REDACTED***`{% else %}`{{ prop.value | default('') }}`{% endif %}
+{% else %}
+- 未設定。
+{% endfor %}
+
+## Keystore 憑證有效期
+
+{% if not jboss_files.keystore.exists %}
+- Keystore 不存在。
+{% elif jboss_keystore_password | length == 0 %}
+- `WARN`：未提供 `jboss_keystore_password`，因此未讀取憑證。
+{% elif jboss_keystore_validity | length == 0 %}
+- `FAIL`：未能解析憑證有效期；請確認密碼、keystore 類型與檔案內容。
+{% else %}
+{% for line in jboss_keystore_validity %}
+- `{{ line }}`
+{% endfor %}
+{% endif %}
+
+## 判讀注意事項
+
+- `NOT CONFIGURED` 不必然代表異常；部分 subsystem、filter、cache 或 timeout 設定屬於選用項目。
+- 本報告主要反映檔案中的靜態設定，不等同於每個執行中 server 的完整 effective runtime model。
+- 若需要確認 runtime state，應在具備唯讀 Management CLI 權限後，另外執行針對 `/host`、`/server-group` 與 `/profile/.../subsystem` 的 `read-resource` 查詢。
+- 報告可能包含內部主機名、IP、JNDI 名稱與系統屬性，應依內部敏感資訊規範保存。

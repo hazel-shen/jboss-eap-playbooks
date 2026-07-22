@@ -1,0 +1,51 @@
+---
+- name: Create the local report directory
+  ansible.builtin.file:
+    path: "{{ jboss_audit_output_dir }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+
+- name: Render the per-host Markdown audit report
+  ansible.builtin.template:
+    src: report.md.j2
+    dest: "{{ jboss_audit_output_dir }}/{{ inventory_hostname }}-jboss-eap-audit.md"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+
+- name: Publish the report location and summary as AAP job artifacts
+  ansible.builtin.set_stats:
+    per_host: true
+    data:
+      jboss_eap_audit_report: >-
+        {{ jboss_audit_output_dir }}/{{ inventory_hostname }}-jboss-eap-audit.md
+      jboss_eap_audit_summary:
+        jboss_account_exists: "{{ jboss_account_exists }}"
+        java17_headless_installed: >-
+          {{ jboss_expected_java_package in (ansible_facts.packages | default({})) }}
+        eap_home_exists: "{{ jboss_install_dirs.matched | int > 0 }}"
+        host_xml_exists: "{{ jboss_files.host_xml.exists }}"
+        domain_xml_exists: "{{ jboss_files.domain_xml.exists }}"
+        configured_servers: "{{ jboss_server_names }}"
+
+- name: Show the concise audit result
+  ansible.builtin.debug:
+    msg:
+      host: "{{ inventory_hostname }}"
+      report: "{{ jboss_audit_output_dir }}/{{ inventory_hostname }}-jboss-eap-audit.md"
+      jboss_account: >-
+        {{
+          'PASS'
+          if jboss_account_exists
+          else 'FAIL'
+        }}
+      java17_headless: >-
+        {{
+          'PASS'
+          if jboss_expected_java_package in (ansible_facts.packages | default({}))
+          else 'FAIL'
+        }}
+      host_xml: "{{ 'PASS' if jboss_files.host_xml.exists else 'FAIL' }}"
+      domain_xml: "{{ 'PASS' if jboss_files.domain_xml.exists else 'FAIL' }}"

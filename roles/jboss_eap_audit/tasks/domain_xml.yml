@@ -1,0 +1,23 @@
+---
+- name: "Query domain setting: {{ jboss_domain_query.name }}"
+  community.general.xml:
+    xmlstring: "{{ jboss_domain_xml_raw.content | b64decode }}"
+    xpath: "{{ jboss_domain_query.xpath }}"
+    content: attribute
+  delegate_to: localhost
+  become: false
+  register: jboss_domain_query_result
+  changed_when: false
+  no_log: true
+
+- name: "Store domain setting: {{ jboss_domain_query.name }}"
+  ansible.builtin.set_fact:
+    jboss_domain_audit: >-
+      {{
+        jboss_domain_audit
+        | combine({
+            jboss_domain_query.name:
+              jboss_domain_query_result.matches | default([])
+          })
+      }}
+  no_log: true
