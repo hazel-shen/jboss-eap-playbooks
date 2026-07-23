@@ -19,6 +19,7 @@
   become: false
   register: jboss_server_heap_query
   changed_when: false
+  failed_when: false
   no_log: true
 
 - name: "Query {{ jboss_server_name }} JVM options"
@@ -30,6 +31,7 @@
   become: false
   register: jboss_server_options_query
   changed_when: false
+  failed_when: false
   no_log: true
 
 - name: "Store {{ jboss_server_name }} JVM audit data"
