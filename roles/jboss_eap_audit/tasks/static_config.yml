@@ -79,16 +79,21 @@
   changed_when: false
   no_log: true
 
-- name: Query bind-address properties from host.xml
+- name: Query bind-address settings from host.xml
   community.general.xml:
     xmlstring: "{{ jboss_host_xml_raw.content | b64decode }}"
-    xpath: "//*[local-name()='property' and starts-with(@name, 'jboss.bind.address')]"
+    xpath: >-
+      //*[local-name()='interfaces']
+      /*[local-name()='interface']
+      /*[local-name()='inet-address'
+      and contains(@value, 'jboss.bind.address')]
     content: attribute
   delegate_to: localhost
   become: false
   when: jboss_files.host_xml.exists
   register: jboss_bind_properties
   changed_when: false
+  failed_when: false
   no_log: true
 
 - name: Query configured servers from host.xml
@@ -101,6 +106,7 @@
   when: jboss_files.host_xml.exists
   register: jboss_host_servers
   changed_when: false
+  failed_when: false
   no_log: true
 
 - name: Build the configured server name list
