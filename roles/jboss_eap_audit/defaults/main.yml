@@ -7,7 +7,7 @@ jboss_domain_config: "{{ jboss_eap_home }}/domain/configuration/domain.xml"
 jboss_version_file: "{{ jboss_eap_home }}/version.txt"
 jboss_init_config: "{{ jboss_eap_home }}/bin/init.d/jboss-eap.conf"
 
-jboss_keystore_path: "{{ jboss_eap_home }}/domain/configuration/taiwanlife.keystore"
+jboss_keystore_path: "{{ jboss_eap_home }}/domain/configuration/example.keystore"
 # Supply this using an AAP encrypted survey field, custom credential, or Ansible Vault.
 jboss_keystore_password: ""
 

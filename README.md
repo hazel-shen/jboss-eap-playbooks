@@ -55,7 +55,7 @@ ansible-playbook -i inventory/hosts.yml playbooks/jboss_eap_audit.yml
 ```yaml
 jboss_eap_home: /opt/jboss-eap
 jboss_user: jboss
-jboss_keystore_path: /opt/jboss-eap/domain/configuration/taiwanlife.keystore
+jboss_keystore_path: /opt/jboss-eap/domain/configuration/example.keystore
 jboss_keystore_password: "由 AAP 加密欄位注入"
 jboss_service_candidates:
   - jboss-eap.service
