@@ -7,28 +7,43 @@
   delegate_to: localhost
   become: false
 
-- name: Render the per-host Markdown audit report
-  ansible.builtin.template:
-    src: report.md.j2
-    dest: "{{ jboss_audit_output_dir }}/{{ inventory_hostname }}-jboss-eap-audit.md"
-    mode: "0600"
+- name: Read the rendered Markdown report for AAP artifacts
+  ansible.builtin.slurp:
+    src: "{{ jboss_audit_output_dir }}/{{ inventory_hostname }}-jboss-eap-audit.md"
   delegate_to: localhost
   become: false
+  register: jboss_audit_report_file
+  no_log: true
 
-- name: Publish the report location and summary as AAP job artifacts
+- name: Publish the complete report and summary as AAP job artifacts
   ansible.builtin.set_stats:
-    per_host: true
+    per_host: false
+    aggregate: true
     data:
-      jboss_eap_audit_report: >-
-        {{ jboss_audit_output_dir }}/{{ inventory_hostname }}-jboss-eap-audit.md
-      jboss_eap_audit_summary:
-        jboss_account_exists: "{{ jboss_account_exists }}"
-        java17_headless_installed: >-
-          {{ jboss_expected_java_package in (ansible_facts.packages | default({})) }}
-        eap_home_exists: "{{ jboss_install_dirs.matched | int > 0 }}"
-        host_xml_exists: "{{ jboss_files.host_xml.exists }}"
-        domain_xml_exists: "{{ jboss_files.domain_xml.exists }}"
-        configured_servers: "{{ jboss_server_names }}"
+      "{{ 'jboss_eap_audit_' ~ (inventory_hostname | regex_replace('[^A-Za-z0-9_]', '_')) }}":
+        report_path: >-
+          {{ jboss_audit_output_dir }}/{{ inventory_hostname }}-jboss-eap-audit.md
+
+        report_markdown: >-
+          {{ jboss_audit_report_file.content | b64decode }}
+
+        summary:
+          jboss_account_exists: "{{ jboss_account_exists | bool }}"
+
+          java17_headless_installed: >-
+            {{
+              jboss_expected_java_package
+              in (ansible_facts.packages | default({}))
+            }}
+
+          eap_home_exists: >-
+            {{ jboss_install_dirs.matched | int > 0 }}
+
+          host_xml_exists: "{{ jboss_files.host_xml.exists | bool }}"
+
+          domain_xml_exists: "{{ jboss_files.domain_xml.exists | bool }}"
+
+          configured_servers: "{{ jboss_server_names }}"
 
 - name: Show the concise audit result
   ansible.builtin.debug:
