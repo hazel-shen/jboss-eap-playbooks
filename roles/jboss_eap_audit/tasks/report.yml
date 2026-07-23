@@ -7,6 +7,14 @@
   delegate_to: localhost
   become: false
 
+- name: Render the per-host Markdown audit report
+  ansible.builtin.template:
+    src: report.md.j2
+    dest: "{{ jboss_audit_output_dir }}/{{ inventory_hostname }}-jboss-eap-audit.md"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+
 - name: Read the rendered Markdown report for AAP artifacts
   ansible.builtin.slurp:
     src: "{{ jboss_audit_output_dir }}/{{ inventory_hostname }}-jboss-eap-audit.md"
