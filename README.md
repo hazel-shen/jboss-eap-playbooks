@@ -80,7 +80,7 @@ jboss_service_candidates:
 
 | Checklist | PDF 要求與目前差異 | 待做項目 |
 |---|---|---|
-| ☐ Server group 與 JVM 實際設定 | PDF 第 2–3 頁要求確認 server 所屬 group、group JVM 設定和生效的 `MaxDirectMemorySize`。目前只從 `host.xml` 讀取 server 的部分 JVM options，並分別列出 `domain.xml` 的 server groups；options 篩選也未包含 `MaxDirectMemorySize`。 | 建立 server → group → JVM 設定的對應，收集 group 層級設定及 managed server 實際生效的啟動參數。 |
+| ☐ Server group 與 JVM 實際設定（部分完成） | PDF 第 2–3 頁要求確認 server 所屬 group、group JVM 設定和生效的 `MaxDirectMemorySize`。目前可從各 host controller 的 `host.xml` 找出 managed server 及所屬 group，並列出 `domain.xml` 的 server groups；server 層級的 JVM options 篩選已包含 `MaxDirectMemorySize`。但報告只列出 server 層級直接設定的 heap／options，未合併 host 與 group 層級設定，空的 `[]` 不代表實際未設定。 | 合併 server → group → JVM 設定及繼承關係，收集 managed server 實際生效的啟動參數，確認 `MaxDirectMemorySize` 的有效值。 |
 | ☐ Direct Buffer runtime 指標 | PDF 第 3–4 頁要求逐台讀取 direct buffer 的 `count`、`memory-used`、`total-capacity`，並計算使用率。目前只有靜態 XML 報告，沒有 Management API／CLI 的 runtime 查詢。 | 新增唯讀 runtime 查詢，記錄每台 server 的指標、取樣時間及 `memory-used / MaxDirectMemorySize`；上限未知時標示無法計算。 |
 | ☐ Thread churn 與來源 | PDF 第 3–4 頁要求收集 thread count、累計啟動數與 uptime，並檢查 `default task-*` 執行緒。目前沒有執行緒統計或 thread dump。 | 收集 runtime threading／uptime；提供按需執行的 `jcmd Thread.print` 取證，供人工確認 churn 來源。 |
 | ☐ 趨勢、告警與 OOM log | PDF 第 4–5 頁要求定期取樣、比對離峰最低值、設定 70%／85% 告警，並偵測 `server.log` 的 direct buffer OOM。現有報告只有單次執行結果。 | 設計歷史資料保存與定期執行方式，加入趨勢／門檻判斷及相關 log 片段收集；門檻需可依系統調整。 |
