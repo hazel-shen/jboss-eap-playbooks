@@ -65,8 +65,10 @@ jboss_service_candidates:
 
 ## 報告
 
-- AAP：報告寫入 job 的 artifacts 目錄，摘要由 `set_stats` 發布。
+- AAP：Job 的 **Output** 會顯示每台主機的可讀摘要。完整 Markdown 內容透過 `set_stats` 存在 Job API 的 `artifacts.jboss_eap_audit_<主機名>.report_markdown`；`report_path` 是執行端的檔案路徑，不是 AAP UI 的下載連結。
 - 本機：報告預設寫入 `reports/<inventory_hostname>-jboss-eap-audit.md`。
+
+在 AAP 執行完後，從 Job 頁面取得 Job ID，於相同網站開啟 `/api/v2/jobs/<Job ID>/`，即可在 `artifacts` 找到完整報告。API 回傳的是 JSON；若需要排版後的 Markdown 檔，可將 `report_markdown` 欄位另存為 `.md` 檔。
 
 兩份原始指令如何合併與替換，請參考 [`docs/check-mapping.md`](docs/check-mapping.md)。
 

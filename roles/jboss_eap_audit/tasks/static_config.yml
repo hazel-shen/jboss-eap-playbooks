@@ -115,7 +115,10 @@
       {{
         (jboss_host_servers | default({})).matches
         | default([])
-        | map(attribute='server.name')
+        | map('dict2items')
+        | map('first')
+        | map(attribute='value')
+        | map(attribute='name')
         | list
       }}
 

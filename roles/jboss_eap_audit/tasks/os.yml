@@ -46,6 +46,11 @@
   register: jboss_install_dirs
   changed_when: false
 
+- name: Check the configured JBoss EAP home
+  ansible.builtin.stat:
+    path: "{{ jboss_eap_home }}"
+  register: jboss_eap_home_stat
+
 - name: Gather service facts
   ansible.builtin.service_facts:
 

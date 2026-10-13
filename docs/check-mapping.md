@@ -5,7 +5,7 @@
 | JBoss Host Name | `slurp` + `community.general.xml` | 讀取 `host.xml` 根節點的 `name` |
 | `id jboss` | `ansible.builtin.getent` | 帳號存在為 PASS，並輸出 UID、GID、home、shell |
 | Java 17 RPM | `ansible.builtin.package_facts` | `java-17-openjdk-headless` 存在為 PASS；同時列出所有 Java 17 套件 |
-| `/opt/jboss-eap*` | `ansible.builtin.find` | 至少找到一個安裝目錄為 PASS |
+| `/opt/jboss-eap*` | `ansible.builtin.find` | 額外盤點 `/opt` 下的安裝目錄；PASS 依實際設定的 `jboss_eap_home` 是否為目錄判定 |
 | `version.txt` | `stat` + `slurp` | 檔案存在並讀取版本內容 |
 | Keystore 有效期 | `ansible.builtin.command` 執行 `keytool` | 密碼透過 stdin 傳入，只保留 `Valid from` 行；不把密碼放在 process arguments |
 | Bind IP | `slurp` + XML XPath | 取得名稱以 `jboss.bind.address` 開頭的 property |
