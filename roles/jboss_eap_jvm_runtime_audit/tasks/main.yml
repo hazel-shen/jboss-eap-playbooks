@@ -1,0 +1,99 @@
+---
+- name: Check host and domain configuration files
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ jboss_host_config }}"
+    - "{{ jboss_domain_config }}"
+  register: jboss_runtime_file_stats
+
+- name: Read the selected host controller configuration
+  ansible.builtin.slurp:
+    src: "{{ jboss_host_config }}"
+  register: jboss_runtime_host_xml
+  failed_when: false
+  no_log: true
+  when: jboss_runtime_file_stats.results[0].stat.isreg | default(false)
+
+- name: Read the domain configuration for comparison
+  ansible.builtin.slurp:
+    src: "{{ jboss_domain_config }}"
+  register: jboss_runtime_domain_xml
+  failed_when: false
+  no_log: true
+  when: jboss_runtime_file_stats.results[1].stat.isreg | default(false)
+
+- name: Parse the selected host and domain XML
+  when: jboss_runtime_host_xml.content is defined
+  block:
+    - name: Map managed servers to their static JVM settings
+      ansible.builtin.set_fact:
+        jboss_runtime_static: >-
+          {{
+            (jboss_runtime_host_xml.content | b64decode)
+            | jboss_eap_jvm_config(
+                (jboss_runtime_domain_xml.content | default('') | b64decode)
+              )
+            | jboss_eap_runtime_static
+          }}
+      no_log: true
+  rescue:
+    - name: Mark unreadable or invalid XML as unknown
+      ansible.builtin.set_fact:
+        jboss_runtime_static: {}
+        jboss_runtime_static_error: true
+
+- name: Inspect running JVM command lines via procfs
+  jboss_eap_runtime:
+    server_config: "{{ jboss_runtime_static | default({}) }}"
+    jboss_eap_home: "{{ jboss_eap_home }}"
+    jboss_host_config: "{{ jboss_host_config }}"
+    domain_config_available: "{{ jboss_runtime_domain_xml.content is defined }}"
+  register: jboss_runtime_processes
+  failed_when: false
+  no_log: true
+  when:
+    - jboss_runtime_host_xml.content is defined
+    - not (jboss_runtime_static_error | default(false))
+
+- name: Create the local report directory
+  ansible.builtin.file:
+    path: "{{ jboss_runtime_output_dir }}"
+    state: directory
+    mode: '0700'
+  delegate_to: localhost
+  become: false
+
+- name: Render the runtime Markdown report
+  ansible.builtin.template:
+    src: report.md.j2
+    dest: "{{ jboss_runtime_output_dir }}/{{ inventory_hostname }}-jboss-eap-jvm-runtime-audit.md"
+    mode: '0600'
+  delegate_to: localhost
+  become: false
+
+- name: Read the rendered report for AAP artifacts
+  ansible.builtin.slurp:
+    src: "{{ jboss_runtime_output_dir }}/{{ inventory_hostname }}-jboss-eap-jvm-runtime-audit.md"
+  delegate_to: localhost
+  become: false
+  register: jboss_runtime_report
+  no_log: true
+
+- name: Publish report and summary as AAP job artifacts
+  ansible.builtin.set_stats:
+    per_host: false
+    aggregate: true
+    data:
+      "{{ 'jboss_eap_jvm_runtime_audit_' ~ (inventory_hostname | regex_replace('[^A-Za-z0-9_]', '_')) }}":
+        report_path: "{{ jboss_runtime_output_dir }}/{{ inventory_hostname }}-jboss-eap-jvm-runtime-audit.md"
+        report_markdown: "{{ jboss_runtime_report.content | b64decode }}"
+        summary: "{{ jboss_runtime_processes.servers | default({}) }}"
+
+- name: Show a concise runtime result
+  ansible.builtin.debug:
+    msg:
+      - "主機別名：{{ inventory_hostname }}"
+      - "設定檔：{{ jboss_host_config }}"
+      - "managed server：{{ jboss_runtime_static.keys() | list if jboss_runtime_static is defined else '未知／無法確認' }}"
+      - "完整報告：Job API 的 artifacts.jboss_eap_jvm_runtime_audit_{{ inventory_hostname | regex_replace('[^A-Za-z0-9_]', '_') }}.report_markdown"
