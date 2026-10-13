@@ -33,13 +33,14 @@ jboss-eap-playbooks/
 ├── inventory/hosts.yml                   # 本機測試用範例 Inventory
 ├── playbooks/jboss_eap_audit.yml         # 唯讀檢核入口
 ├── requirements.txt                      # Execution Environment 的 Python 相依需求
+├── tests/test_jboss_eap_jvm.py           # JVM 設定層級解析測試
 └── roles/jboss_eap_audit/
     ├── defaults/main.yml                 # 可覆寫的預設變數
+    ├── filter_plugins/jboss_eap_jvm.py   # 整理 host、group、server 的 JVM 設定
     ├── tasks/
     │   ├── main.yml                      # Role 執行順序
     │   ├── os.yml                        # 作業系統與服務檢核
     │   ├── static_config.yml             # 設定檔讀取與 XML 查詢
-    │   ├── server_xml.yml                # 各 managed server 的 JVM 查詢
     │   ├── domain_xml.yml                # domain.xml 查詢
     │   └── report.yml                    # 產生報告並發布 AAP artifacts
     └── templates/report.md.j2            # Markdown 報告範本
@@ -93,7 +94,7 @@ jboss_service_candidates:
 
 | Checklist | PDF 要求與目前差異 | 待做項目 |
 |---|---|---|
-| ☐ Server group 與 JVM 實際設定（部分完成） | PDF 第 2–3 頁要求確認 server 所屬 group、group JVM 設定和生效的 `MaxDirectMemorySize`。目前可從各 host controller 的 `host.xml` 找出 managed server 及所屬 group，並列出 `domain.xml` 的 server groups；server 層級的 JVM options 篩選已包含 `MaxDirectMemorySize`。但報告只列出 server 層級直接設定的 heap／options，未合併 host 與 group 層級設定，空的 `[]` 不代表實際未設定。 | 合併 server → group → JVM 設定及繼承關係，收集 managed server 實際生效的啟動參數，確認 `MaxDirectMemorySize` 的有效值。 |
+| ☐ Server group 與 JVM 實際設定（設定檔部分完成） | PDF 第 2–3 頁要求確認 server 所屬 group、group JVM 設定和生效的 `MaxDirectMemorySize`。目前可從各 host controller 的 `host.xml` 找出 managed server 與所屬 group，並結合 `domain.xml` 列出 host、group、server 三層 JVM 設定及 Heap 值的來源；`MaxDirectMemorySize` 會列出各層設定檔候選值。這些資料尚未證實執行中 JVM 的實際參數。 | 唯讀收集 managed server 實際啟動參數，確認 `MaxDirectMemorySize` 的有效值，並與設定檔結果比對。 |
 | ☐ Direct Buffer runtime 指標 | PDF 第 3–4 頁要求逐台讀取 direct buffer 的 `count`、`memory-used`、`total-capacity`，並計算使用率。目前只有靜態 XML 報告，沒有 Management API／CLI 的 runtime 查詢。 | 新增唯讀 runtime 查詢，記錄每台 server 的指標、取樣時間及 `memory-used / MaxDirectMemorySize`；上限未知時標示無法計算。 |
 | ☐ Thread churn 與來源 | PDF 第 3–4 頁要求收集 thread count、累計啟動數與 uptime，並檢查 `default task-*` 執行緒。目前沒有執行緒統計或 thread dump。 | 收集 runtime threading／uptime；提供按需執行的 `jcmd Thread.print` 取證，供人工確認 churn 來源。 |
 | ☐ 趨勢、告警與 OOM log | PDF 第 4–5 頁要求定期取樣、比對離峰最低值、設定 70%／85% 告警，並偵測 `server.log` 的 direct buffer OOM。現有報告只有單次執行結果。 | 設計歷史資料保存與定期執行方式，加入趨勢／門檻判斷及相關 log 片段收集；門檻需可依系統調整。 |
