@@ -1,0 +1,7 @@
+---
+- name: Audit running JBoss EAP managed server JVMs
+  hosts: jboss_eap
+  gather_facts: true
+  become: true
+  roles:
+    - role: jboss_eap_jvm_runtime_audit

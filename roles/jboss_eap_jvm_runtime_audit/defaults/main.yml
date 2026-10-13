@@ -1,0 +1,12 @@
+---
+jboss_eap_home: /opt/jboss-eap
+jboss_host_config: "{{ jboss_eap_home }}/domain/configuration/host.xml"
+jboss_domain_config: "{{ jboss_eap_home }}/domain/configuration/domain.xml"
+jboss_runtime_output_dir: >-
+  {{
+    (lookup('ansible.builtin.env', 'AWX_PRIVATE_DATA_DIR') | length > 0)
+    | ternary(
+        lookup('ansible.builtin.env', 'AWX_PRIVATE_DATA_DIR') ~ '/artifacts',
+        playbook_dir ~ '/../reports'
+      )
+  }}

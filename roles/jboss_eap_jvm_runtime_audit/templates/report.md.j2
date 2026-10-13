@@ -1,0 +1,63 @@
+# JBoss EAP managed server JVM 執行狀態檢核
+
+- **Inventory 主機別名：** `{{ inventory_hostname }}`
+- **檢核時間：** `{{ ansible_date_time.iso8601 }}`
+- **host controller 設定檔：** `{{ jboss_host_config }}`
+- **domain 設定檔：** `{{ jboss_domain_config }}`
+- **執行模式：** 唯讀
+{% if jboss_runtime_domain_xml.content is not defined %}
+- **domain.xml：** 無法讀取；server-group 的設定檔對照為未知／無法確認。
+{% endif %}
+
+## 對應依據
+
+從 `host.xml` 取得 managed server 名稱；從 `/proc/<pid>/cmdline` 讀取 host controller 的 `--host-config`、`jboss.domain.base.dir`，以及 server JVM 的 `-D[Server:<name>]` 和相同 base directory。只在兩者各有唯一匹配程序時回報啟動參數。PID 是本次取樣的程序識別碼。報告只保留這些身分證據與 Heap／Direct Memory 選項，不保留完整命令列。
+
+{% if jboss_runtime_host_xml.content is not defined %}
+**未知／無法確認：** 無法讀取 `{{ jboss_host_config }}`，因此無法建立 server 清單。
+{% elif jboss_runtime_static_error | default(false) %}
+**未知／無法確認：** 無法解析 host 或 domain XML，無法建立可靠的 server 清單。
+{% elif jboss_runtime_processes.servers is not defined %}
+**未知／無法確認：** 無法檢查 `/proc` 或執行檢核模組。
+{% elif jboss_runtime_static | length == 0 %}
+此 host controller 設定檔沒有 managed server 定義。
+{% else %}
+{% if jboss_runtime_processes.unreadable_processes | default(0) | int > 0 %}
+**未知／無法確認：** 有 {{ jboss_runtime_processes.unreadable_processes }} 個程序命令列無權讀取；無法排除其他匹配程序。
+{% endif %}
+
+{% for name, config in jboss_runtime_static.items() %}
+{% set runtime = (jboss_runtime_processes.servers | default({})).get(name, {}) %}
+### {{ name }}
+
+- **Server group：** `{{ config.group | default('未知', true) }}`
+- **Controller PID：** {{ runtime.controller_pid | default('未知／無法確認', true) }}
+- **Controller domain base：** `{{ runtime.controller_base | default('未知／無法確認', true) }}`
+- **Server JVM PID：** {{ runtime.server_pid | default('未知／無法確認', true) }}
+- **程序對應：** {{ runtime.status | default('未知／無法確認') }}；{{ runtime.reason | default('') }}
+
+| 項目 | 第一項 A 設定檔值／來源 | 執行中 JVM 啟動參數 | 對照 |
+|---|---|---|---|
+{% set heap = config.heap_sources %}
+{% set options = runtime.options | default({}) %}
+{% set comparison = runtime.comparison | default({}) %}
+| Heap 初始值 | {% if heap.get('size') %}`{{ heap['size'].value }}`（{{ heap['size'].source }}）{% else %}未指定{% endif %} | {% if options.get('xms') %}`-Xms{{ options.xms }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('xms', '未知／無法確認') }} |
+| Heap 最大值 | {% if heap.get('max-size') %}`{{ heap['max-size'].value }}`（{{ heap['max-size'].source }}）{% else %}未指定{% endif %} | {% if options.get('xmx') %}`-Xmx{{ options.xmx }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('xmx', '未知／無法確認') }} |
+| MaxDirectMemorySize | {% if config.max_direct_memory_candidates | length == 1 %}`{{ config.max_direct_memory_candidates[0].value }}`（{{ config.max_direct_memory_candidates[0].source }}）{% elif config.max_direct_memory_candidates | length > 1 %}多個設定檔候選值：{% for candidate in config.max_direct_memory_candidates %}`{{ candidate.value }}`（{{ candidate.source }}）{% if not loop.last %}、{% endif %}{% endfor %}{% else %}未指定{% endif %} | {% if options.get('max_direct_memory_size') %}`-XX:MaxDirectMemorySize={{ options.max_direct_memory_size }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('max_direct_memory_size', '未知／無法確認') }} |
+
+{% if runtime.status == '已對應' %}
+**允許輸出的原始啟動參數證據**
+
+```text
+{{ (options.get('xms_evidence', []) + options.get('xmx_evidence', []) + options.get('max_direct_memory_size_evidence', [])) | join('\n') }}
+```
+{% endif %}
+
+{% endfor %}
+{% endif %}
+
+## 判讀限制
+
+- 缺少啟動選項、重複選項、無權讀取或無法唯一對應時，值與對照皆標示「未知／無法確認」；不得視為 JVM 預設值。
+- XML 的 `MaxDirectMemorySize` 若有多層候選值，此報告不推測最後覆寫順序。設定檔與啟動參數一致，只代表兩份可見證據相符，不等於已由 JVM 管理介面確認有效記憶體上限。
+- 這是單次程序取樣；PID 與參數可能在報告產生後改變。
