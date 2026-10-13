@@ -2,6 +2,11 @@
 
 這套 Playbook 將既有的 `grep`、`awk`、`rpm`、`id`、`systemctl`、`firewall-cmd` 與 `keytool` 指令整理為可由 Ansible Automation Platform 執行的唯讀檢核。
 
+## 目前使用環境
+
+- Ansible Automation Platform（AAP）2.6
+- Red Hat JBoss Enterprise Application Platform（JBoss EAP）8.1，Domain Mode
+
 ## 設計原則
 
 - 不修改受管 JBoss EAP 主機。
@@ -19,17 +24,25 @@
 ## 專案結構
 
 ```text
-jboss-eap-audit/
-├── ansible.cfg                            // Ansible 專案設定檔，用來控制執行行為。
-├── collections/requirements.yml           // Ansible Collection 的相依需求。
-├── docs/check-mapping.md                 
-├── inventory/hosts.yml                    // 本機測試使用的 Ansible Inventory。
-├── playbooks/jboss_eap_audit.yml          // 可以直接執行的入口
-├── requirements.txt
-└── roles/jboss_eap_audit/                 // 存放可以重複使用的 Ansible Role
-    ├── defaults/main.yml                  // 定義可以被覆寫的預設變數
-    ├── tasks/                             // 定義實際要執行的操作
-    └── templates/report.md.j2             // 存放 Jinja2 範本
+jboss-eap-playbooks/
+├── .gitignore                            # 忽略本機報告、PDF 與密碼檔
+├── README.md                             # 使用說明與待辦 Checklist
+├── ansible.cfg                           # Ansible 執行設定
+├── collections/requirements.yml          # Ansible Collection 相依需求
+├── docs/check-mapping.md                 # 原始指令與 Playbook 檢核對照
+├── inventory/hosts.yml                   # 本機測試用範例 Inventory
+├── playbooks/jboss_eap_audit.yml         # 唯讀檢核入口
+├── requirements.txt                      # Execution Environment 的 Python 相依需求
+└── roles/jboss_eap_audit/
+    ├── defaults/main.yml                 # 可覆寫的預設變數
+    ├── tasks/
+    │   ├── main.yml                      # Role 執行順序
+    │   ├── os.yml                        # 作業系統與服務檢核
+    │   ├── static_config.yml             # 設定檔讀取與 XML 查詢
+    │   ├── server_xml.yml                # 各 managed server 的 JVM 查詢
+    │   ├── domain_xml.yml                # domain.xml 查詢
+    │   └── report.yml                    # 產生報告並發布 AAP artifacts
+    └── templates/report.md.j2            # Markdown 報告範本
 ```
 
 ## AAP 設定
