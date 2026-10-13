@@ -11,7 +11,7 @@
 |---|---|---|
 | JBoss 帳號存在 | {{ 'PASS' if jboss_account_exists else 'FAIL' }} | `{{ jboss_user }}` |
 | Java 17 headless | {{ 'PASS' if jboss_expected_java_package in (ansible_facts.packages | default({})) else 'FAIL' }} | `{{ jboss_expected_java_package }}` |
-| JBoss 安裝目錄 | {{ 'PASS' if jboss_install_dirs.matched | int > 0 else 'FAIL' }} | {{ jboss_install_dirs.files | default([]) | map(attribute='path') | join(', ') | default('NOT FOUND', true) }} |
+| JBoss EAP Home | {{ 'PASS' if jboss_eap_home_stat.stat.isdir | default(false) else 'FAIL' }} | `{{ jboss_eap_home }}` |
 | version.txt | {{ 'PASS' if jboss_files.version.exists else 'FAIL' }} | `{{ jboss_version_file }}` |
 | host.xml | {{ 'PASS' if jboss_files.host_xml.exists else 'FAIL' }} | `{{ jboss_host_config }}` |
 | domain.xml | {{ 'PASS' if jboss_files.domain_xml.exists else 'FAIL' }} | `{{ jboss_domain_config }}` |
@@ -53,7 +53,9 @@
 ## Host 與 Bind Address
 
 {% if jboss_files.host_xml.exists %}
-- **Host：** `{{ (jboss_host_root.matches | default([]) | first | default({})).get('host', {}).get('name', 'NOT FOUND') }}`
+{% set host_matches = jboss_host_root.matches | default([]) %}
+{% set host_attrs = (host_matches | first | dict2items | first).value if host_matches else {} %}
+- **Host：** `{{ host_attrs.get('name', '未在 host.xml 設定') }}`
 
 ```yaml
 {{ jboss_bind_properties.matches | default([]) | to_nice_yaml(indent=2) }}
@@ -109,15 +111,22 @@
 
 ## Server Group
 
-```yaml
-{{ jboss_domain_audit.server_groups | default([]) | to_nice_yaml(indent=2) }}
-```
+| Group | Profile |
+|---|---|
+{% for group in jboss_domain_audit.server_groups | default([]) %}
+| `{{ group.name | default('UNKNOWN') }}` | `{{ group.profile | default('UNKNOWN') }}` |
+{% else %}
+| 未找到 | — |
+{% endfor %}
 
 ## Server 與 JVM／GC 設定
 
 {% if jboss_server_audit | length > 0 %}
 {% for server_name, server in jboss_server_audit.items() %}
 ### {{ server_name }}
+
+{% set server_attrs = server.attributes | first | default({}) %}
+- **Server group：** `{{ server_attrs.group | default('未設定') }}`
 
 **Server attributes**
 
@@ -138,7 +147,11 @@
 ```
 {% endfor %}
 {% else %}
-未在 `host.xml` 中找到 server 定義。
+{% if jboss_files.host_xml.exists %}
+`{{ jboss_host_config }}` 沒有 managed server 定義。若這是 Domain Controller 使用的 `host-primary.xml`，此結果可能正常；要盤點其他 host controller 的 server，需檢查它們實際使用的 host 設定檔。
+{% else %}
+無法讀取 `{{ jboss_host_config }}`，因此未執行 server 檢核。
+{% endif %}
 {% endif %}
 
 ## Datasource 與 JDBC Driver
@@ -175,8 +188,7 @@
 
 為避免報告外洩機密，名稱疑似包含 `password`、`secret`、`token` 或 `credential` 的值會被遮蔽。
 
-{% for match in jboss_domain_audit.system_properties | default([]) %}
-{% set prop = match.property | default({}) %}
+{% for prop in jboss_domain_audit.system_properties | default([]) %}
 - `{{ prop.name | default('UNKNOWN') }}` = {% if prop.name | default('') | lower | regex_search('password|secret|token|credential') %}`***REDACTED***`{% else %}`{{ prop.value | default('') }}`{% endif %}
 {% else %}
 - 未設定。

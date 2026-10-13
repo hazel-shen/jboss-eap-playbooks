@@ -2,6 +2,11 @@
 
 這套 Playbook 將既有的 `grep`、`awk`、`rpm`、`id`、`systemctl`、`firewall-cmd` 與 `keytool` 指令整理為可由 Ansible Automation Platform 執行的唯讀檢核。
 
+## 目前使用環境
+
+- Ansible Automation Platform（AAP）2.6
+- Red Hat JBoss Enterprise Application Platform（JBoss EAP）8.1，Domain Mode
+
 ## 設計原則
 
 - 不修改受管 JBoss EAP 主機。
@@ -19,17 +24,25 @@
 ## 專案結構
 
 ```text
-jboss-eap-audit/
-├── ansible.cfg                            // Ansible 專案設定檔，用來控制執行行為。
-├── collections/requirements.yml           // Ansible Collection 的相依需求。
-├── docs/check-mapping.md                 
-├── inventory/hosts.yml                    // 本機測試使用的 Ansible Inventory。
-├── playbooks/jboss_eap_audit.yml          // 可以直接執行的入口
-├── requirements.txt
-└── roles/jboss_eap_audit/                 // 存放可以重複使用的 Ansible Role
-    ├── defaults/main.yml                  // 定義可以被覆寫的預設變數
-    ├── tasks/                             // 定義實際要執行的操作
-    └── templates/report.md.j2             // 存放 Jinja2 範本
+jboss-eap-playbooks/
+├── .gitignore                            # 忽略本機報告、PDF 與密碼檔
+├── README.md                             # 使用說明與待辦 Checklist
+├── ansible.cfg                           # Ansible 執行設定
+├── collections/requirements.yml          # Ansible Collection 相依需求
+├── docs/check-mapping.md                 # 原始指令與 Playbook 檢核對照
+├── inventory/hosts.yml                   # 本機測試用範例 Inventory
+├── playbooks/jboss_eap_audit.yml         # 唯讀檢核入口
+├── requirements.txt                      # Execution Environment 的 Python 相依需求
+└── roles/jboss_eap_audit/
+    ├── defaults/main.yml                 # 可覆寫的預設變數
+    ├── tasks/
+    │   ├── main.yml                      # Role 執行順序
+    │   ├── os.yml                        # 作業系統與服務檢核
+    │   ├── static_config.yml             # 設定檔讀取與 XML 查詢
+    │   ├── server_xml.yml                # 各 managed server 的 JVM 查詢
+    │   ├── domain_xml.yml                # domain.xml 查詢
+    │   └── report.yml                    # 產生報告並發布 AAP artifacts
+    └── templates/report.md.j2            # Markdown 報告範本
 ```
 
 ## AAP 設定
@@ -63,10 +76,14 @@ jboss_service_candidates:
   - eap-domain-secondary.service
 ```
 
+若主機使用 `host-primary.xml` 作為 Domain Controller 設定，該檔案可能沒有 managed server。此時 `configured_servers: []` 只代表這份 host 設定檔沒有宣告 server。要盤點其他 host controller，請將其實際使用的設定檔指定給 `jboss_host_config`；同一台 OS 主機有多個 host controller 時，可在 Inventory 建立不同主機別名，分別指定 `jboss_host_config` 與 `jboss_domain_config`。
+
 ## 報告
 
-- AAP：報告寫入 job 的 artifacts 目錄，摘要由 `set_stats` 發布。
+- AAP：Job 的 **Output** 會顯示每台主機的可讀摘要。完整 Markdown 內容透過 `set_stats` 存在 Job API 的 `artifacts.jboss_eap_audit_<主機名>.report_markdown`；`report_path` 是執行端的檔案路徑，不是 AAP UI 的下載連結。
 - 本機：報告預設寫入 `reports/<inventory_hostname>-jboss-eap-audit.md`。
+
+在 AAP 執行完後，從 Job 頁面取得 Job ID，於相同網站開啟 `/api/v2/jobs/<Job ID>/`，即可在 `artifacts` 找到完整報告。API 回傳的是 JSON；若需要排版後的 Markdown 檔，可將 `report_markdown` 欄位另存為 `.md` 檔。
 
 兩份原始指令如何合併與替換，請參考 [`docs/check-mapping.md`](docs/check-mapping.md)。
 
@@ -76,7 +93,7 @@ jboss_service_candidates:
 
 | Checklist | PDF 要求與目前差異 | 待做項目 |
 |---|---|---|
-| ☐ Server group 與 JVM 實際設定 | PDF 第 2–3 頁要求確認 server 所屬 group、group JVM 設定和生效的 `MaxDirectMemorySize`。目前只從 `host.xml` 讀取 server 的部分 JVM options，並分別列出 `domain.xml` 的 server groups；options 篩選也未包含 `MaxDirectMemorySize`。 | 建立 server → group → JVM 設定的對應，收集 group 層級設定及 managed server 實際生效的啟動參數。 |
+| ☐ Server group 與 JVM 實際設定（部分完成） | PDF 第 2–3 頁要求確認 server 所屬 group、group JVM 設定和生效的 `MaxDirectMemorySize`。目前可從各 host controller 的 `host.xml` 找出 managed server 及所屬 group，並列出 `domain.xml` 的 server groups；server 層級的 JVM options 篩選已包含 `MaxDirectMemorySize`。但報告只列出 server 層級直接設定的 heap／options，未合併 host 與 group 層級設定，空的 `[]` 不代表實際未設定。 | 合併 server → group → JVM 設定及繼承關係，收集 managed server 實際生效的啟動參數，確認 `MaxDirectMemorySize` 的有效值。 |
 | ☐ Direct Buffer runtime 指標 | PDF 第 3–4 頁要求逐台讀取 direct buffer 的 `count`、`memory-used`、`total-capacity`，並計算使用率。目前只有靜態 XML 報告，沒有 Management API／CLI 的 runtime 查詢。 | 新增唯讀 runtime 查詢，記錄每台 server 的指標、取樣時間及 `memory-used / MaxDirectMemorySize`；上限未知時標示無法計算。 |
 | ☐ Thread churn 與來源 | PDF 第 3–4 頁要求收集 thread count、累計啟動數與 uptime，並檢查 `default task-*` 執行緒。目前沒有執行緒統計或 thread dump。 | 收集 runtime threading／uptime；提供按需執行的 `jcmd Thread.print` 取證，供人工確認 churn 來源。 |
 | ☐ 趨勢、告警與 OOM log | PDF 第 4–5 頁要求定期取樣、比對離峰最低值、設定 70%／85% 告警，並偵測 `server.log` 的 direct buffer OOM。現有報告只有單次執行結果。 | 設計歷史資料保存與定期執行方式，加入趨勢／門檻判斷及相關 log 片段收集；門檻需可依系統調整。 |
