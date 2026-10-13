@@ -13,7 +13,7 @@
 | systemd unit | `service_facts` + `systemctl cat` | 顯示存在性、state、enablement 與 unit 定義 |
 | Firewalld | `firewall-cmd --list-all` | 唯讀取得 active zone；失敗標記為 WARN |
 | Server Groups | XML XPath | 取得所有 `server-group` attributes |
-| Server/JVM/Heap/GC | 依 server name 執行 XML XPath | 保留 heap、max heap、GC、metaspace 與 GC log 相關選項 |
+| Server/JVM/Heap/GC | 依 server name 整理 host.xml 與 domain.xml 的 JVM 設定層級 | 列出 host、group、server 的 heap、GC、metaspace、Direct Memory 與 GC log 相關選項及來源；執行中參數仍待驗證 |
 | Datasources | XML XPath | 排除文字式 `grep -A20` 的上下文誤判，直接尋找 datasource 元素 |
 | JDBC Drivers | XML XPath | 取得所有非內建與內建 driver 定義；由報告使用者判讀是否需要排除 H2 |
 | Socket Binding Groups | XML XPath | 取得所有 socket-binding-group attributes |

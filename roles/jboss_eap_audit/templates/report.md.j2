@@ -121,30 +121,69 @@
 
 ## Server 與 JVM／GC 設定
 
-{% if jboss_server_audit | length > 0 %}
-{% for server_name, server in jboss_server_audit.items() %}
+此節依 `host.xml` 與 `domain.xml` 整理設定來源。Heap 依 host → group → server 層級列出覆寫後的設定檔值；JVM options 保留各層候選值。實際執行中的 JVM 啟動參數尚未驗證。
+
+{% if jboss_jvm_config_audit | length > 0 %}
+{% for server_name, server in jboss_jvm_config_audit.items() %}
 ### {{ server_name }}
 
-{% set server_attrs = server.attributes | first | default({}) %}
-- **Server group：** `{{ server_attrs.group | default('未設定') }}`
+- **Server group：** `{{ server.group | default('未設定', true) }}`
+- **Profile：** `{{ server.profile | default('未知', true) }}`
+- **選用的 JVM 名稱：** `{{ server.selected_jvm | default('無法由 XML 判定', true) }}`
 
 **Server attributes**
 
 ```yaml
-{{ server.attributes | to_nice_yaml(indent=2) }}
+{{ server.server_attributes | to_nice_yaml(indent=2) }}
 ```
 
-**Heap size / max-size**
+**JVM 設定層級（host → group → server）**
+
+{% for layer in server.layers %}
+#### {{ layer.source }}：`{{ layer.jvm_name }}`
+
+{% if layer.heap %}
+- **Heap：** `{{ layer.heap | to_json }}`
+{% else %}
+- **Heap：** 此層未設定
+{% endif %}
+
+{% if layer.options %}
+**相關 JVM options**
 
 ```yaml
-{{ server.heap | to_nice_yaml(indent=2) }}
+{{ layer.options | to_nice_yaml(indent=2) }}
 ```
+{% else %}
+- **相關 JVM options：** 此層未設定
+{% endif %}
 
-**GC、Metaspace 與 GC log 選項**
+{% else %}
+在 XML 中未找到對應 JVM 定義。
+{% endfor %}
 
-```yaml
-{{ server.options | to_nice_yaml(indent=2) }}
-```
+**依層級覆寫後的 Heap 設定檔值**
+
+| 項目 | 值 | 來源 |
+|---|---|---|
+{% for attribute, setting in server.heap_sources.items() %}
+| `{{ attribute }}` | `{{ setting.value }}` | {{ setting.source }} |
+{% else %}
+| 未在 XML 指定 | — | — |
+{% endfor %}
+
+**`MaxDirectMemorySize` 設定檔候選值**
+
+{% for setting in server.max_direct_memory_candidates %}
+- `{{ setting.value }}`（{{ setting.source }}）
+{% else %}
+- 未在對應的 JVM XML options 指定；實際值須由執行中的 JVM 確認。
+{% endfor %}
+
+{% for note in server.notes %}
+- **注意：** {{ note }}
+{% endfor %}
+
 {% endfor %}
 {% else %}
 {% if jboss_files.host_xml.exists %}
@@ -193,6 +232,7 @@
 {% else %}
 - 未設定。
 {% endfor %}
+
 
 ## Keystore 憑證有效期
 

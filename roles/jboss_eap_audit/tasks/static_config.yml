@@ -135,13 +135,6 @@
         | list
       }}
 
-- name: Query JVM settings for each configured server
-  ansible.builtin.include_tasks: server_xml.yml
-  loop: "{{ jboss_server_names }}"
-  loop_control:
-    loop_var: jboss_server_name
-    label: "{{ jboss_server_name }}"
-
 - name: Query selected domain.xml settings
   ansible.builtin.include_tasks: domain_xml.yml
   loop:
@@ -175,6 +168,19 @@
     loop_var: jboss_domain_query
     label: "{{ jboss_domain_query.name }}"
   when: jboss_files.domain_xml.exists
+
+- name: Map host, group, and server JVM settings from XML
+  ansible.builtin.set_fact:
+    jboss_jvm_config_audit: >-
+      {{
+        (jboss_host_xml_raw.content | b64decode)
+        | jboss_eap_jvm_config(
+            (jboss_domain_xml_raw.content | b64decode)
+            if jboss_files.domain_xml.exists else ''
+          )
+      }}
+  when: jboss_files.host_xml.exists
+  no_log: true
 
 - name: Inspect the configured keystore without exposing its password
   ansible.builtin.command:
