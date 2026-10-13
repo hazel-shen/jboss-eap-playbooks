@@ -18,7 +18,10 @@
         jboss_domain_audit
         | combine({
             jboss_domain_query.name:
-              jboss_domain_query_result.matches | default([])
+              (
+                jboss_domain_query_result.matches | default([])
+                | map('dict2items') | map('first') | map(attribute='value') | list
+              )
           })
       }}
   no_log: true

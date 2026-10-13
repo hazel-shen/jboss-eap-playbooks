@@ -45,7 +45,7 @@
             }}
 
           eap_home_exists: >-
-            {{ jboss_install_dirs.matched | int > 0 }}
+            {{ jboss_eap_home_stat.stat.isdir | default(false) }}
 
           host_xml_exists: "{{ jboss_files.host_xml.exists | bool }}"
 
@@ -56,19 +56,9 @@
 - name: Show the concise audit result
   ansible.builtin.debug:
     msg:
-      host: "{{ inventory_hostname }}"
-      report: "{{ jboss_audit_output_dir }}/{{ inventory_hostname }}-jboss-eap-audit.md"
-      jboss_account: >-
-        {{
-          'PASS'
-          if jboss_account_exists
-          else 'FAIL'
-        }}
-      java17_headless: >-
-        {{
-          'PASS'
-          if jboss_expected_java_package in (ansible_facts.packages | default({}))
-          else 'FAIL'
-        }}
-      host_xml: "{{ 'PASS' if jboss_files.host_xml.exists else 'FAIL' }}"
-      domain_xml: "{{ 'PASS' if jboss_files.domain_xml.exists else 'FAIL' }}"
+      - "主機：{{ inventory_hostname }}"
+      - "JBoss EAP Home：{{ 'PASS' if jboss_eap_home_stat.stat.isdir | default(false) else 'FAIL' }}（{{ jboss_eap_home }}）"
+      - "host.xml：{{ 'PASS' if jboss_files.host_xml.exists else 'FAIL' }}"
+      - "domain.xml：{{ 'PASS' if jboss_files.domain_xml.exists else 'FAIL' }}"
+      - "{{ '找到的 server：' ~ (jboss_server_names | join(', ')) if jboss_server_names | length > 0 else '此 host 設定檔沒有 managed server 定義：' ~ jboss_host_config }}"
+      - "完整報告：Job API 的 artifacts.jboss_eap_audit_{{ inventory_hostname | regex_replace('[^A-Za-z0-9_]', '_') }}.report_markdown"

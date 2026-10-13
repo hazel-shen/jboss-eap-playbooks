@@ -96,17 +96,30 @@
   failed_when: false
   no_log: true
 
-- name: Query configured servers from host.xml
+- name: Count configured servers in host.xml
   community.general.xml:
     xmlstring: "{{ jboss_host_xml_raw.content | b64decode }}"
-    xpath: "//*[local-name()='servers']/*[local-name()='server']"
-    content: attribute
+    xpath: "*[local-name()='host']/*[local-name()='servers']/*[local-name()='server']"
+    count: true
   delegate_to: localhost
   become: false
   when: jboss_files.host_xml.exists
+  register: jboss_host_server_count
+  changed_when: false
+  no_log: true
+
+- name: Query configured servers from host.xml
+  community.general.xml:
+    xmlstring: "{{ jboss_host_xml_raw.content | b64decode }}"
+    xpath: "/*[local-name()='host']/*[local-name()='servers']/*[local-name()='server']"
+    content: attribute
+  delegate_to: localhost
+  become: false
+  when:
+    - jboss_files.host_xml.exists
+    - jboss_host_server_count.count | default(0) | int > 0
   register: jboss_host_servers
   changed_when: false
-  failed_when: false
   no_log: true
 
 - name: Build the configured server name list
@@ -115,7 +128,10 @@
       {{
         (jboss_host_servers | default({})).matches
         | default([])
-        | map(attribute='server.name')
+        | map('dict2items')
+        | map('first')
+        | map(attribute='value')
+        | map(attribute='name')
         | list
       }}
 

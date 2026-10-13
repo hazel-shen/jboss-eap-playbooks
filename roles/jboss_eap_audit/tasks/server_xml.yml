@@ -41,16 +41,23 @@
         jboss_server_audit
         | combine({
             jboss_server_name: {
-              'attributes': jboss_server_attributes_query.matches | default([]),
-              'heap': jboss_server_heap_query.matches | default([]),
+              'attributes': (
+                jboss_server_attributes_query.matches | default([])
+                | map('dict2items') | map('first') | map(attribute='value') | list
+              ),
+              'heap': (
+                jboss_server_heap_query.matches | default([])
+                | map('dict2items') | map('first') | map(attribute='value') | list
+              ),
               'options': (
                 jboss_server_options_query.matches
                 | default([])
-                | selectattr('option.value', 'defined')
+                | map('dict2items') | map('first') | map(attribute='value')
+                | selectattr('value', 'defined')
                 | selectattr(
-                    'option.value',
+                    'value',
                     'search',
-                    '(^-Xm[sx]|Use[A-Za-z0-9]+GC|MaxMetaspaceSize=|^-Xlog:|^-Xloggc:)'
+                    '(^-Xm[sx]|Use[A-Za-z0-9]+GC|MaxMetaspaceSize=|MaxDirectMemorySize=|^-Xlog:|^-Xloggc:)'
                   )
                 | list
               )
