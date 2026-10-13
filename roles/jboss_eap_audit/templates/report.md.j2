@@ -142,12 +142,22 @@
 {% for layer in server.layers %}
 #### {{ layer.source }}：`{{ layer.jvm_name }}`
 
-- Heap：{% if layer.heap %}`{{ layer.heap | to_json }}`{% else %}此層未設定{% endif %}
-- 相關 JVM options：{% if layer.options %}
+{% if layer.heap %}
+- **Heap：** `{{ layer.heap | to_json }}`
+{% else %}
+- **Heap：** 此層未設定
+{% endif %}
+
+{% if layer.options %}
+**相關 JVM options**
+
 ```yaml
 {{ layer.options | to_nice_yaml(indent=2) }}
 ```
-{% else %}此層未設定{% endif %}
+{% else %}
+- **相關 JVM options：** 此層未設定
+{% endif %}
+
 {% else %}
 在 XML 中未找到對應 JVM 定義。
 {% endfor %}
@@ -169,9 +179,11 @@
 {% else %}
 - 未在對應的 JVM XML options 指定；實際值須由執行中的 JVM 確認。
 {% endfor %}
+
 {% for note in server.notes %}
 - **注意：** {{ note }}
 {% endfor %}
+
 {% endfor %}
 {% else %}
 {% if jboss_files.host_xml.exists %}
@@ -220,6 +232,7 @@
 {% else %}
 - 未設定。
 {% endfor %}
+
 
 ## Keystore 憑證有效期
 
