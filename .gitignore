@@ -1,4 +1,5 @@
 reports/
 *.retry
+*.pdf
 .vault-password
 
