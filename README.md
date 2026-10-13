@@ -33,13 +33,14 @@ jboss-eap-playbooks/
 ├── inventory/hosts.yml                   # 本機測試用範例 Inventory
 ├── playbooks/jboss_eap_audit.yml         # 唯讀檢核入口
 ├── requirements.txt                      # Execution Environment 的 Python 相依需求
+├── tests/test_jboss_eap_jvm.py           # JVM 設定層級解析測試
 └── roles/jboss_eap_audit/
     ├── defaults/main.yml                 # 可覆寫的預設變數
+    ├── filter_plugins/jboss_eap_jvm.py   # 整理 host、group、server 的 JVM 設定
     ├── tasks/
     │   ├── main.yml                      # Role 執行順序
     │   ├── os.yml                        # 作業系統與服務檢核
     │   ├── static_config.yml             # 設定檔讀取與 XML 查詢
-    │   ├── server_xml.yml                # 各 managed server 的 JVM 查詢
     │   ├── domain_xml.yml                # domain.xml 查詢
     │   └── report.yml                    # 產生報告並發布 AAP artifacts
     └── templates/report.md.j2            # Markdown 報告範本
@@ -89,17 +90,20 @@ jboss_service_candidates:
 
 ## PDF 指引差距與待辦 Checklist
 
-對照 [`JBoss EAP 常見問題排查與資料收集指引.pdf`](JBoss%20EAP%20常見問題排查與資料收集指引.pdf)。目前 Playbook 以 Domain Mode 的一次性、唯讀靜態設定盤點為主；PDF 前 6 頁聚焦 Direct Buffer OOM 的監控、取證與處置，後半段則是升級與修正摘要。以下項目尚未完成。
+對照 [`JBoss EAP 常見問題排查與資料收集指引.pdf`](JBoss%20EAP%20常見問題排查與資料收集指引.pdf)。目前 Playbook 以 Domain Mode 的一次性、唯讀靜態設定盤點為主；PDF 前 6 頁聚焦 Direct Buffer OOM 的監控、取證與處置，後半段則是升級與修正摘要。第一項拆成設定檔與執行狀態兩個 Playbook；以下未勾選的項目仍待完成或實機驗證。
 
 | Checklist | PDF 要求與目前差異 | 待做項目 |
 |---|---|---|
-| ☐ Server group 與 JVM 實際設定（部分完成） | PDF 第 2–3 頁要求確認 server 所屬 group、group JVM 設定和生效的 `MaxDirectMemorySize`。目前可從各 host controller 的 `host.xml` 找出 managed server 及所屬 group，並列出 `domain.xml` 的 server groups；server 層級的 JVM options 篩選已包含 `MaxDirectMemorySize`。但報告只列出 server 層級直接設定的 heap／options，未合併 host 與 group 層級設定，空的 `[]` 不代表實際未設定。 | 合併 server → group → JVM 設定及繼承關係，收集 managed server 實際生效的啟動參數，確認 `MaxDirectMemorySize` 的有效值。 |
+| ☐ 第一項 A：JVM 設定檔檢核（現有 `playbooks/jboss_eap_audit.yml`） | 已實作：從各 host controller 的 `host.xml` 找出 managed server 與所屬 group，結合 `domain.xml` 列出 host、group、server 三層 JVM 設定、Heap 值來源及 `MaxDirectMemorySize` 的設定檔候選值。 | 在 AAP 2.6／EAP 8.1 實機重跑，核對 primary 與 secondary 的 server、group、JVM 設定來源和缺值標示。 |
+| ☐ 第一項 B：JVM 執行狀態檢核（規劃新增 `playbooks/jboss_eap_jvm_runtime_audit.yml`） | PDF 第 2–3 頁還要求確認 managed server 實際生效的 JVM 設定，尤其是 `MaxDirectMemorySize`；現有 Playbook 尚未收集執行中 JVM 的啟動參數。 | 唯讀對應每個 server 與其 JVM 程序，收集實際啟動參數，與第一項 A 的設定檔結果比對；無法取得時標示未知。 |
 | ☐ Direct Buffer runtime 指標 | PDF 第 3–4 頁要求逐台讀取 direct buffer 的 `count`、`memory-used`、`total-capacity`，並計算使用率。目前只有靜態 XML 報告，沒有 Management API／CLI 的 runtime 查詢。 | 新增唯讀 runtime 查詢，記錄每台 server 的指標、取樣時間及 `memory-used / MaxDirectMemorySize`；上限未知時標示無法計算。 |
 | ☐ Thread churn 與來源 | PDF 第 3–4 頁要求收集 thread count、累計啟動數與 uptime，並檢查 `default task-*` 執行緒。目前沒有執行緒統計或 thread dump。 | 收集 runtime threading／uptime；提供按需執行的 `jcmd Thread.print` 取證，供人工確認 churn 來源。 |
 | ☐ 趨勢、告警與 OOM log | PDF 第 4–5 頁要求定期取樣、比對離峰最低值、設定 70%／85% 告警，並偵測 `server.log` 的 direct buffer OOM。現有報告只有單次執行結果。 | 設計歷史資料保存與定期執行方式，加入趨勢／門檻判斷及相關 log 片段收集；門檻需可依系統調整。 |
 | ☐ Undertow 與 IO worker 緩解設定盤點 | PDF 第 5–6 頁討論 `thread-local-cache-size`、`task-core-threads`、`task-max-threads`。目前 XML 查詢未收集這些欄位。 | 唯讀查詢相關 profile 的 Undertow buffer pool 與 IO worker 設定，並標示設定來源及是否為預設值。 |
 | ☐ 升級準備盤點 | PDF 第 1–2、7–12 頁整理 EAP、JDK、OS 與應用相容性考量。目前可讀 `version.txt` 和 OS facts，但摘要固定以 Java 17 套件作為 PASS 條件。 | 增加 EAP update level、實際使用的 JDK、OS 版本及 APM／driver／應用回歸測試紀錄；依目標版本設定判讀規則，避免把 Java 21 目標環境誤判為失敗。 |
 | ☐ 事件處置流程 | PDF 第 5–6 頁包含 heap dump、suspend、逐台 restart 及設定變更；現有 Playbook 沒有這些操作。 | 另行設計明確觸發的取證與處置流程，記錄操作前提、產出位置及逐台執行順序；不併入定期唯讀稽核。 |
+
+第一項 A、B 都完成並驗證後，才將「Server group 與 JVM 實際設定」視為完成。
 
 PDF 的版本、支援期限與修正資訊應在規劃升級時重新核對官方文件；本表僅記錄它與目前 Playbook 的功能差距。
 
