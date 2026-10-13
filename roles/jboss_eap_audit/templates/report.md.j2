@@ -147,7 +147,11 @@
 ```
 {% endfor %}
 {% else %}
-未在 `host.xml` 中找到 server 定義。
+{% if jboss_files.host_xml.exists %}
+`{{ jboss_host_config }}` 沒有 managed server 定義。若這是 Domain Controller 使用的 `host-primary.xml`，此結果可能正常；要盤點其他 host controller 的 server，需檢查它們實際使用的 host 設定檔。
+{% else %}
+無法讀取 `{{ jboss_host_config }}`，因此未執行 server 檢核。
+{% endif %}
 {% endif %}
 
 ## Datasource 與 JDBC Driver

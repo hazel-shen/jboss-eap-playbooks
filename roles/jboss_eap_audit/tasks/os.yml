@@ -49,6 +49,7 @@
 - name: Check the configured JBoss EAP home
   ansible.builtin.stat:
     path: "{{ jboss_eap_home }}"
+    follow: true
   register: jboss_eap_home_stat
 
 - name: Gather service facts

@@ -106,7 +106,6 @@
   when: jboss_files.host_xml.exists
   register: jboss_host_servers
   changed_when: false
-  failed_when: false
   no_log: true
 
 - name: Build the configured server name list
