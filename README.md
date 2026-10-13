@@ -92,9 +92,9 @@ jboss_service_candidates:
 
 對照 [`JBoss EAP 常見問題排查與資料收集指引.pdf`](JBoss%20EAP%20常見問題排查與資料收集指引.pdf)。目前 Playbook 以 Domain Mode 的一次性、唯讀靜態設定盤點為主；PDF 前 6 頁聚焦 Direct Buffer OOM 的監控、取證與處置，後半段則是升級與修正摘要。第一項拆成設定檔與執行狀態兩個 Playbook；以下未勾選的項目仍待完成或實機驗證。
 
-| Checklist | PDF 要求與目前差異 | 待做項目 |
+| Checklist | PDF 要求與目前差異 | 驗證結果／待做項目 |
 |---|---|---|
-| ☐ 第一項 A：JVM 設定檔檢核（現有 `playbooks/jboss_eap_audit.yml`） | 已實作：從各 host controller 的 `host.xml` 找出 managed server 與所屬 group，結合 `domain.xml` 列出 host、group、server 三層 JVM 設定、Heap 值來源及 `MaxDirectMemorySize` 的設定檔候選值。 | 在 AAP 2.6／EAP 8.1 實機重跑，核對 primary 與 secondary 的 server、group、JVM 設定來源和缺值標示。 |
+| ☑ 第一項 A：JVM 設定檔檢核（現有 `playbooks/jboss_eap_audit.yml`） | 已實作：從各 host controller 的 `host.xml` 找出 managed server 與所屬 group，結合 `domain.xml` 列出 host、group、server 三層 JVM 設定、Heap 值來源及 `MaxDirectMemorySize` 的設定檔候選值。 | 2026-10-13 於 AAP 2.6／EAP 8.1 實機驗證：primary 的 host 設定檔沒有 managed server；secondary 找到 `server-one`、`server-two` 及所屬 group，列出 host／group／server JVM 層級、Heap 值與來源，並將 XML 未指定的 `MaxDirectMemorySize` 標示為待 runtime 確認。Markdown 段落排版已於重跑後確認。 |
 | ☐ 第一項 B：JVM 執行狀態檢核（規劃新增 `playbooks/jboss_eap_jvm_runtime_audit.yml`） | PDF 第 2–3 頁還要求確認 managed server 實際生效的 JVM 設定，尤其是 `MaxDirectMemorySize`；現有 Playbook 尚未收集執行中 JVM 的啟動參數。 | 唯讀對應每個 server 與其 JVM 程序，收集實際啟動參數，與第一項 A 的設定檔結果比對；無法取得時標示未知。 |
 | ☐ Direct Buffer runtime 指標 | PDF 第 3–4 頁要求逐台讀取 direct buffer 的 `count`、`memory-used`、`total-capacity`，並計算使用率。目前只有靜態 XML 報告，沒有 Management API／CLI 的 runtime 查詢。 | 新增唯讀 runtime 查詢，記錄每台 server 的指標、取樣時間及 `memory-used / MaxDirectMemorySize`；上限未知時標示無法計算。 |
 | ☐ Thread churn 與來源 | PDF 第 3–4 頁要求收集 thread count、累計啟動數與 uptime，並檢查 `default task-*` 執行緒。目前沒有執行緒統計或 thread dump。 | 收集 runtime threading／uptime；提供按需執行的 `jcmd Thread.print` 取證，供人工確認 churn 來源。 |
