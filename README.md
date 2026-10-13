@@ -32,8 +32,10 @@ jboss-eap-playbooks/
 ├── docs/check-mapping.md                 # 原始指令與 Playbook 檢核對照
 ├── inventory/hosts.yml                   # 本機測試用範例 Inventory
 ├── playbooks/jboss_eap_audit.yml         # 唯讀檢核入口
+├── playbooks/jboss_eap_jvm_runtime_audit.yml # JVM 執行狀態唯讀檢核
 ├── requirements.txt                      # Execution Environment 的 Python 相依需求
 ├── tests/test_jboss_eap_jvm.py           # JVM 設定層級解析測試
+├── tests/test_jboss_eap_runtime.py       # 程序對應與啟動參數解析測試
 └── roles/jboss_eap_audit/
     ├── defaults/main.yml                 # 可覆寫的預設變數
     ├── filter_plugins/jboss_eap_jvm.py   # 整理 host、group、server 的 JVM 設定
@@ -55,6 +57,7 @@ jboss-eap-playbooks/
 5. 建立 Inventory，主機放入 `jboss_eap` group。
 6. 建立 Job Template，Playbook 選擇 `playbooks/jboss_eap_audit.yml`。
 7. 若要檢查 keystore，使用 encrypted survey 或 custom credential 傳入 `jboss_keystore_password`。
+8. 另建 JVM 執行狀態 Job Template，Playbook 選擇 `playbooks/jboss_eap_jvm_runtime_audit.yml`。使用可讀取 `/proc/<pid>/cmdline` 的唯讀帳號；若需 `become`，只授權讀取，不需啟停服務。Inventory 中 primary、secondary 即使共用 `ansible_host`，也要分別指定實際的 `jboss_host_config`、`jboss_domain_config` 與 `jboss_eap_home`。
 
 ## 本機測試
 
@@ -62,6 +65,8 @@ jboss-eap-playbooks/
 ansible-galaxy collection install -r collections/requirements.yml
 python3 -m pip install -r requirements.txt
 ansible-playbook -i inventory/hosts.yml playbooks/jboss_eap_audit.yml
+ansible-playbook -i inventory/hosts.yml playbooks/jboss_eap_jvm_runtime_audit.yml
+python3 -m unittest discover -s tests
 ```
 
 ## 可覆寫變數
@@ -79,10 +84,28 @@ jboss_service_candidates:
 
 若主機使用 `host-primary.xml` 作為 Domain Controller 設定，該檔案可能沒有 managed server。此時 `configured_servers: []` 只代表這份 host 設定檔沒有宣告 server。要盤點其他 host controller，請將其實際使用的設定檔指定給 `jboss_host_config`；同一台 OS 主機有多個 host controller 時，可在 Inventory 建立不同主機別名，分別指定 `jboss_host_config` 與 `jboss_domain_config`。
 
+例如同機雙 controller 可設定：
+
+```yaml
+jboss_eap:
+  hosts:
+    eap-primary:
+      ansible_host: 192.0.2.10
+      jboss_host_config: /srv/primary/configuration/host-primary.xml
+      jboss_domain_config: /srv/primary/configuration/domain.xml
+    eap-secondary:
+      ansible_host: 192.0.2.10
+      jboss_host_config: /srv/secondary/configuration/host-secondary.xml
+      jboss_domain_config: /srv/secondary/configuration/domain.xml
+```
+
+執行中的 host controller 必須能以 `--host-config`（未指定時為 `host.xml`）和 `jboss.domain.base.dir` 對應到該別名的設定檔；managed server 必須有 `-D[Server:<name>]` 標記，且使用同一個 base directory。對應不唯一、程序未執行或 `/proc` 有無權讀取的程序時，報告標示「未知／無法確認」。只保留 PID、對應依據與 `-Xms`、`-Xmx`、`-XX:MaxDirectMemorySize` 的數值證據，不保存完整命令列。沒有明確 JVM 選項時不推測預設或有效值。
+
 ## 報告
 
 - AAP：Job 的 **Output** 會顯示每台主機的可讀摘要。完整 Markdown 內容透過 `set_stats` 存在 Job API 的 `artifacts.jboss_eap_audit_<主機名>.report_markdown`；`report_path` 是執行端的檔案路徑，不是 AAP UI 的下載連結。
 - 本機：報告預設寫入 `reports/<inventory_hostname>-jboss-eap-audit.md`。
+- JVM 執行狀態：另寫入 `reports/<inventory_hostname>-jboss-eap-jvm-runtime-audit.md`，AAP artifact key 為 `jboss_eap_jvm_runtime_audit_<主機名>`，內含 `report_markdown`、`report_path` 與逐 server `summary`。
 
 在 AAP 執行完後，從 Job 頁面取得 Job ID，於相同網站開啟 `/api/v2/jobs/<Job ID>/`，即可在 `artifacts` 找到完整報告。API 回傳的是 JSON；若需要排版後的 Markdown 檔，可將 `report_markdown` 欄位另存為 `.md` 檔。
 
@@ -95,7 +118,7 @@ jboss_service_candidates:
 | Checklist | PDF 要求與目前差異 | 驗證結果／待做項目 |
 |---|---|---|
 | ☑ 第一項 A：JVM 設定檔檢核（現有 `playbooks/jboss_eap_audit.yml`） | 已實作：從各 host controller 的 `host.xml` 找出 managed server 與所屬 group，結合 `domain.xml` 列出 host、group、server 三層 JVM 設定、Heap 值來源及 `MaxDirectMemorySize` 的設定檔候選值。 | 2026-10-13 於 AAP 2.6／EAP 8.1 實機驗證：primary 的 host 設定檔沒有 managed server；secondary 找到 `server-one`、`server-two` 及所屬 group，列出 host／group／server JVM 層級、Heap 值與來源，並將 XML 未指定的 `MaxDirectMemorySize` 標示為待 runtime 確認。Markdown 段落排版已於重跑後確認。 |
-| ☐ 第一項 B：JVM 執行狀態檢核（規劃新增 `playbooks/jboss_eap_jvm_runtime_audit.yml`） | PDF 第 2–3 頁還要求確認 managed server 實際生效的 JVM 設定，尤其是 `MaxDirectMemorySize`；現有 Playbook 尚未收集執行中 JVM 的啟動參數。 | 唯讀對應每個 server 與其 JVM 程序，收集實際啟動參數，與第一項 A 的設定檔結果比對；無法取得時標示未知。 |
+| ☐ 第一項 B：JVM 執行狀態檢核（`playbooks/jboss_eap_jvm_runtime_audit.yml`） | 已實作唯讀程序對應，收集 managed server 的 `-Xms`、`-Xmx`、`-XX:MaxDirectMemorySize`，與第一項 A 的 XML 設定值及來源對照；對應不唯一或無權讀取時標示「未知／無法確認」。 | 本機單元測試完成；仍需於 AAP 2.6／EAP 8.1 實機確認 controller 與 server 命令列格式、`/proc` 權限、雙別名對應、報告及 artifacts。啟動參數與設定檔相符仍不代表已查得 JVM 有效記憶體上限。 |
 | ☐ Direct Buffer runtime 指標 | PDF 第 3–4 頁要求逐台讀取 direct buffer 的 `count`、`memory-used`、`total-capacity`，並計算使用率。目前只有靜態 XML 報告，沒有 Management API／CLI 的 runtime 查詢。 | 新增唯讀 runtime 查詢，記錄每台 server 的指標、取樣時間及 `memory-used / MaxDirectMemorySize`；上限未知時標示無法計算。 |
 | ☐ Thread churn 與來源 | PDF 第 3–4 頁要求收集 thread count、累計啟動數與 uptime，並檢查 `default task-*` 執行緒。目前沒有執行緒統計或 thread dump。 | 收集 runtime threading／uptime；提供按需執行的 `jcmd Thread.print` 取證，供人工確認 churn 來源。 |
 | ☐ 趨勢、告警與 OOM log | PDF 第 4–5 頁要求定期取樣、比對離峰最低值、設定 70%／85% 告警，並偵測 `server.log` 的 direct buffer OOM。現有報告只有單次執行結果。 | 設計歷史資料保存與定期執行方式，加入趨勢／門檻判斷及相關 log 片段收集；門檻需可依系統調整。 |
