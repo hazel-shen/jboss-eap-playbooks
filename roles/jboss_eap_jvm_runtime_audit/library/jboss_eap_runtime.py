@@ -7,7 +7,12 @@ import re
 
 SERVER_MARKER = re.compile(r"^-D\[Server:([^\]]+)\]$")
 MEMORY = re.compile(r"^(\d+)([kKmMgGtT]?)$")
-SAFE_OPTIONS = ("-Xms", "-Xmx", "-XX:MaxDirectMemorySize=")
+MEMORY_OPTIONS = (
+    ("xms", "-Xms"),
+    ("xmx", "-Xmx"),
+    ("max_direct_memory_size", "-XX:MaxDirectMemorySize="),
+    ("max_metaspace_size", "-XX:MaxMetaspaceSize="),
+)
 GC_FLAG = re.compile(r"^-XX:[+-]Use(?:Serial|Parallel|G1|Z|Shenandoah|Epsilon)GC$")
 POSSIBLE_JBOSS_COMM = re.compile(
     r"^(?:java(?:[0-9._-].*)?|jboss(?:[._-].*)?|domain\.sh|standalone\.sh)$",
@@ -58,15 +63,18 @@ def memory_bytes(value):
     return int(match.group(1)) * 1024 ** {"": 0, "k": 1, "m": 2, "g": 3, "t": 4}[match.group(2).lower()]
 
 
+def numeric_option(args, prefix):
+    """Return one valid value and safe evidence; repeated values stay unknown."""
+    values = [arg[len(prefix):] for arg in args if arg.startswith(prefix)]
+    evidence = [prefix + value for value in values if memory_bytes(value) is not None]
+    value = values[0] if len(values) == 1 and len(evidence) == 1 else None
+    return value, evidence
+
+
 def safe_options(args):
     result = {}
-    for key, prefix in (("xms", "-Xms"), ("xmx", "-Xmx"),
-                        ("max_direct_memory_size", "-XX:MaxDirectMemorySize="),
-                        ("max_metaspace_size", "-XX:MaxMetaspaceSize=")):
-        values = [arg[len(prefix):] for arg in args if arg.startswith(prefix)]
-        # A malformed or repeated option must not be reported as an effective value.
-        result[key] = values[0] if len(values) == 1 and memory_bytes(values[0]) is not None else None
-        result[key + "_evidence"] = [prefix + value for value in values if memory_bytes(value) is not None]
+    for key, prefix in MEMORY_OPTIONS:
+        result[key], result[key + "_evidence"] = numeric_option(args, prefix)
     gc_flags = [arg for arg in args if GC_FLAG.fullmatch(arg)]
     result["gc"] = gc_flags[0] if len(gc_flags) == 1 else None
     result["gc_evidence"] = gc_flags
@@ -83,6 +91,7 @@ def safe_options(args):
 
 
 def gc_logging_option(option):
+    # Keep this parser aligned with the controller-side filter; tests cover both.
     if option.startswith("-Xloggc:"):
         return True
     if not option.startswith("-Xlog:"):
@@ -118,6 +127,31 @@ def compare_gc_logging(value, candidates):
     if len(candidates) != 1 or not candidates[0]["enabled"] or value is None:
         return "未知／無法確認"
     return "已找到相關啟動選項（細節未比對）" if value else "未找到相關啟動選項"
+
+
+def single_candidate_value(candidates):
+    return candidates[0]["value"] if len(candidates) == 1 else None
+
+
+def compare_server_options(options, config, domain_config_available):
+    """Compare the stable runtime/static contract without claiming JVM defaults."""
+    heap = config.get("heap_sources", {})
+    comparison = {
+        "xms": compare(options["xms"], heap.get("size", {}).get("value")),
+        "xmx": compare(options["xmx"], heap.get("max-size", {}).get("value")),
+        "max_direct_memory_size": compare(
+            options["max_direct_memory_size"],
+            single_candidate_value(config.get("max_direct_memory_candidates", []))),
+        "max_metaspace_size": compare(
+            options["max_metaspace_size"],
+            single_candidate_value(config.get("max_metaspace_candidates", []))),
+        "gc": compare_candidate(options["gc"], config.get("gc_candidates", [])),
+        "gc_logging": compare_gc_logging(
+            options["gc_logging"], config.get("gc_logging_candidates", [])),
+    }
+    if not domain_config_available:
+        return {key: "未知／無法確認" for key in comparison}
+    return comparison
 
 
 def evaluate(processes, server_config, home, config_path, unreadable=0,
@@ -167,26 +201,8 @@ def evaluate(processes, server_config, home, config_path, unreadable=0,
                 item["status"] = "已對應"
                 item["reason"] = "server 標記與 controller 的 domain base directory 相符"
                 item["options"] = safe_options(process["args"])
-                heap = config.get("heap_sources", {})
-                candidates_xml = config.get("max_direct_memory_candidates", [])
-                metaspace_xml = config.get("max_metaspace_candidates", [])
-                item["comparison"] = {
-                    "xms": compare(item["options"]["xms"], heap.get("size", {}).get("value")),
-                    "xmx": compare(item["options"]["xmx"], heap.get("max-size", {}).get("value")),
-                    "max_direct_memory_size": compare(
-                        item["options"]["max_direct_memory_size"],
-                        candidates_xml[0]["value"] if len(candidates_xml) == 1 else None),
-                    "max_metaspace_size": compare(
-                        item["options"]["max_metaspace_size"],
-                        metaspace_xml[0]["value"] if len(metaspace_xml) == 1 else None),
-                    "gc": compare_candidate(
-                        item["options"]["gc"], config.get("gc_candidates", [])),
-                    "gc_logging": compare_gc_logging(
-                        item["options"]["gc_logging"],
-                        config.get("gc_logging_candidates", [])),
-                }
-                if not domain_config_available:
-                    item["comparison"] = {key: "未知／無法確認" for key in item["comparison"]}
+                item["comparison"] = compare_server_options(
+                    item["options"], config, domain_config_available)
         if unreadable:
             item["reason"] += "；另有無權讀取的程序，無法排除重複對應"
             item["status"] = "未知／無法確認"

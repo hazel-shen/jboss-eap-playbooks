@@ -46,6 +46,25 @@ CONFIG = {"server-one": {"heap_sources": {
 
 
 class RuntimeTest(unittest.TestCase):
+    def test_gc_logging_parsers_share_the_same_contract(self):
+        cases = [
+            ("-Xlog:gc", True, False),
+            ("-Xlog:gc*:file=/tmp/password=secret", True, False),
+            ("-Xlog:safepoint+gc=debug:stdout", True, False),
+            ("-Xlog:all=off", True, True),
+            ("-Xlog:gc=off", True, True),
+            ("-Xloggc:/tmp/gc.log", True, False),
+            ("-Xloggc:", True, True),
+            ("-Xlog:safepoint", False, False),
+        ]
+        for option, relevant, disabled in cases:
+            with self.subTest(option=option):
+                self.assertEqual(filter_module.gc_logging_option(option), relevant)
+                self.assertEqual(module.gc_logging_option(option), relevant)
+                if relevant:
+                    self.assertEqual(filter_module.gc_logging_disabled(option), disabled)
+                    self.assertEqual(module.gc_logging_disabled(option), disabled)
+
     def evaluate(self, processes, unreadable=0):
         return module.evaluate(processes, CONFIG, HOME,
                                SECONDARY + "/configuration/host-secondary.xml", unreadable)["servers"]["server-one"]
@@ -132,6 +151,10 @@ class RuntimeTest(unittest.TestCase):
                 "-Xlog:gc*:file=/tmp/password=xml-secret"]}],
         }})
         self.assertNotIn("xml-secret", str(static))
+        self.assertEqual(set(static["server-one"]), {
+            "group", "heap_sources", "max_direct_memory_candidates",
+            "max_metaspace_candidates", "gc_candidates", "gc_logging_candidates",
+        })
         found = module.evaluate([
             controller(20, SECONDARY, "host-secondary.xml"),
             server(50, SECONDARY, "server-one", "-XX:+UseG1GC",
@@ -146,6 +169,15 @@ class RuntimeTest(unittest.TestCase):
         self.assertNotIn("runtime-secret", str(found))
         self.assertNotIn("secret", str(found))
         self.assertEqual(found["options"]["gc_logging_count"], 1)
+
+    def test_missing_domain_keeps_every_comparison_unknown(self):
+        found = module.evaluate([
+            controller(20, SECONDARY, "host-secondary.xml"),
+            server(50, SECONDARY, "server-one", "-Xms512m", "-Xmx2g",
+                   "-XX:MaxDirectMemorySize=256m")], CONFIG, HOME,
+            SECONDARY + "/configuration/host-secondary.xml",
+            domain_config_available=False)["servers"]["server-one"]
+        self.assertEqual(set(found["comparison"].values()), {"未知／無法確認"})
 
     def test_repeated_or_disabled_gc_options_remain_unknown(self):
         options = module.safe_options([

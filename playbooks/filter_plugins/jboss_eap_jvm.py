@@ -9,7 +9,6 @@ JVM_OPTION_PATTERN = re.compile(
     r"MaxMetaspaceSize=|[A-Za-z0-9]*GC[A-Za-z0-9]*=)|-Xlog:|-Xloggc:)"
 )
 DIRECT_MEMORY_PATTERN = re.compile(r"^-XX:MaxDirectMemorySize=(.+)$")
-METASPACE_PATTERN = re.compile(r"^-XX:MaxMetaspaceSize=(.+)$")
 GC_FLAG_PATTERN = re.compile(
     r"^-XX:[+-]Use(?:Serial|Parallel|G1|Z|Shenandoah|Epsilon)GC$"
 )
@@ -200,8 +199,22 @@ def jboss_eap_jvm_config(host_xml, domain_xml=""):
     return result
 
 
+def safe_memory_setting(value, source):
+    return {"value": value if MEMORY_VALUE.fullmatch(value) else "未知／無法確認",
+            "source": source}
+
+
+def numeric_option_candidates(options, prefix):
+    """Keep candidate sources while rejecting arbitrary XML option values."""
+    return [
+        safe_memory_setting(option[len(prefix):], source)
+        for option, source in options
+        if option.startswith(prefix) and len(option) > len(prefix)
+    ]
+
+
 def jboss_eap_runtime_static(config):
-    """Keep allowlisted comparison evidence without arbitrary JVM option values."""
+    """Export the runtime comparison contract without arbitrary JVM values."""
     result = {}
     for name, server in config.items():
         options = [
@@ -211,22 +224,16 @@ def jboss_eap_runtime_static(config):
         result[name] = {
             "group": server["group"],
             "heap_sources": {
-                key: {"value": (setting["value"] if MEMORY_VALUE.fullmatch(setting["value"])
-                                else "未知／無法確認"), "source": setting["source"]}
+                key: safe_memory_setting(setting["value"], setting["source"])
                 for key, setting in server["heap_sources"].items()
                 if key in ("size", "max-size")
             },
             "max_direct_memory_candidates": [
-                {"value": (setting["value"] if MEMORY_VALUE.fullmatch(setting["value"])
-                           else "未知／無法確認"), "source": setting["source"]}
+                safe_memory_setting(setting["value"], setting["source"])
                 for setting in server["max_direct_memory_candidates"]
             ],
-            "max_metaspace_candidates": [
-                {"value": (match.group(1) if MEMORY_VALUE.fullmatch(match.group(1))
-                           else "未知／無法確認"), "source": source}
-                for option, source in options
-                if (match := METASPACE_PATTERN.fullmatch(option))
-            ],
+            "max_metaspace_candidates": numeric_option_candidates(
+                options, "-XX:MaxMetaspaceSize="),
             "gc_candidates": [
                 {"value": option, "source": source}
                 for option, source in options if GC_FLAG_PATTERN.fullmatch(option)
@@ -242,6 +249,7 @@ def jboss_eap_runtime_static(config):
 
 def gc_logging_option(option):
     """Recognize GC logging candidates without returning their raw value."""
+    # Keep this parser aligned with the managed-host module; tests cover both.
     if option.startswith("-Xloggc:"):
         return True
     if not option.startswith("-Xlog:"):
