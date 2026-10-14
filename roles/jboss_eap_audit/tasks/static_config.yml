@@ -136,39 +136,12 @@
         | list
       }}
 
-- name: Query selected domain.xml settings
-  ansible.builtin.include_tasks: domain_xml.yml
-  loop:
-    - name: server_groups
-      xpath: "//*[local-name()='server-groups']/*[local-name()='server-group']"
-    - name: datasources
-      xpath: "//*[local-name()='datasource']"
-    - name: jdbc_drivers
-      xpath: "//*[local-name()='drivers']/*[local-name()='driver']"
-    - name: socket_binding_groups
-      xpath: "//*[local-name()='socket-binding-group']"
-    - name: handlers
-      xpath: "//*[local-name()='handler']"
-    - name: local_caches
-      xpath: "//*[local-name()='local-cache']"
-    - name: expression_filters
-      xpath: "//*[local-name()='expression-filter']"
-    - name: response_headers
-      xpath: "//*[local-name()='response-header']"
-    - name: filters
-      xpath: "//*[local-name()='filter']"
-    - name: rewrites
-      xpath: "//*[local-name()='rewrite']"
-    - name: max_parameters
-      xpath: "//*[@max-parameters]"
-    - name: timeout_settings
-      xpath: "//*[@request-timeout or @no-request-timeout or @request-parse-timeout]"
-    - name: system_properties
-      xpath: "//*[local-name()='system-properties']/*[local-name()='property']"
-  loop_control:
-    loop_var: jboss_domain_query
-    label: "{{ jboss_domain_query.name }}"
+- name: Collect selected domain.xml settings in one pass
+  ansible.builtin.set_fact:
+    jboss_domain_audit: >-
+      {{ (jboss_domain_xml_raw.content | b64decode) | jboss_eap_domain_audit }}
   when: jboss_files.domain_xml.exists
+  no_log: true
 
 - name: Map host, group, and server JVM settings from XML
   ansible.builtin.set_fact:

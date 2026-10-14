@@ -9,6 +9,10 @@ JVM_OPTION_PATTERN = re.compile(
     r"MaxMetaspaceSize=|[A-Za-z0-9]*GC[A-Za-z0-9]*=)|-Xlog:|-Xloggc:)"
 )
 DIRECT_MEMORY_PATTERN = re.compile(r"^-XX:MaxDirectMemorySize=(.+)$")
+GC_FLAG_PATTERN = re.compile(
+    r"^-XX:[+-]Use(?:Serial|Parallel|G1|Z|Shenandoah|Epsilon)GC$"
+)
+MEMORY_VALUE = re.compile(r"^\d+[kKmMgGtT]?$")
 SENSITIVE_KEY = (
     r"[A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|credential|"
     r"api[_-]?key|access[_-]?key|private[_-]?key)[A-Za-z0-9_.-]*"
@@ -76,6 +80,63 @@ def _children(parent, name):
 
 def _child(parent, name):
     return next(iter(_children(parent, name)), None)
+
+
+DOMAIN_AUDIT_SECTIONS = (
+    "server_groups", "datasources", "jdbc_drivers", "socket_binding_groups",
+    "handlers", "local_caches", "expression_filters", "response_headers",
+    "filters", "rewrites", "max_parameters", "timeout_settings",
+    "system_properties",
+)
+DOMAIN_ELEMENT_SECTIONS = {
+    "datasource": "datasources",
+    "socket-binding-group": "socket_binding_groups",
+    "handler": "handlers",
+    "local-cache": "local_caches",
+    "expression-filter": "expression_filters",
+    "response-header": "response_headers",
+    "filter": "filters",
+    "rewrite": "rewrites",
+}
+DOMAIN_PARENT_SECTIONS = {
+    ("server-groups", "server-group"): "server_groups",
+    ("drivers", "driver"): "jdbc_drivers",
+    ("system-properties", "property"): "system_properties",
+}
+
+
+def jboss_eap_domain_audit(domain_xml):
+    """Collect the former 13 XPath attribute selections in one XML traversal."""
+    result = {section: [] for section in DOMAIN_AUDIT_SECTIONS}
+    if not domain_xml:
+        return result
+    try:
+        root = ElementTree.fromstring(domain_xml)
+    except ElementTree.ParseError:
+        # The previous XML tasks used failed_when: false and yielded empty lists.
+        return result
+
+    pending = [(root, None)]
+    while pending:
+        element, parent_name = pending.pop()
+        name = _name(element)
+        pending.extend((child, name) for child in reversed(element))
+        sections = []
+        if name in DOMAIN_ELEMENT_SECTIONS:
+            sections.append(DOMAIN_ELEMENT_SECTIONS[name])
+        section = DOMAIN_PARENT_SECTIONS.get((parent_name, name))
+        if section:
+            sections.append(section)
+        if "max-parameters" in element.attrib:
+            sections.append("max_parameters")
+        if any(
+            key in element.attrib
+            for key in ("request-timeout", "no-request-timeout", "request-parse-timeout")
+        ):
+            sections.append("timeout_settings")
+        for section in sections:
+            result[section].append(dict(element.attrib))
+    return result
 
 
 def _jvms(parent):
@@ -195,30 +256,79 @@ def jboss_eap_jvm_config(host_xml, domain_xml=""):
     return result
 
 
+def safe_memory_setting(value, source):
+    return {"value": value if MEMORY_VALUE.fullmatch(value) else "未知／無法確認",
+            "source": source}
+
+
+def numeric_option_candidates(options, prefix):
+    """Keep candidate sources while rejecting arbitrary XML option values."""
+    return [
+        safe_memory_setting(option[len(prefix):], source)
+        for option, source in options
+        if option.startswith(prefix) and len(option) > len(prefix)
+    ]
+
+
 def jboss_eap_runtime_static(config):
-    """Keep only numeric memory evidence needed for the runtime comparison."""
-    numeric = re.compile(r"^\d+[kKmMgGtT]?$")
+    """Export the runtime comparison contract without arbitrary JVM values."""
     result = {}
     for name, server in config.items():
+        options = [
+            (option, layer["source"])
+            for layer in server.get("layers", []) for option in layer["options"]
+        ]
         result[name] = {
             "group": server["group"],
             "heap_sources": {
-                key: {"value": (setting["value"] if numeric.fullmatch(setting["value"])
-                                else "未知／無法確認"), "source": setting["source"]}
+                key: safe_memory_setting(setting["value"], setting["source"])
                 for key, setting in server["heap_sources"].items()
                 if key in ("size", "max-size")
             },
             "max_direct_memory_candidates": [
-                {"value": (setting["value"] if numeric.fullmatch(setting["value"])
-                           else "未知／無法確認"), "source": setting["source"]}
+                safe_memory_setting(setting["value"], setting["source"])
                 for setting in server["max_direct_memory_candidates"]
+            ],
+            "max_metaspace_candidates": numeric_option_candidates(
+                options, "-XX:MaxMetaspaceSize="),
+            "gc_candidates": [
+                {"value": option, "source": source}
+                for option, source in options if GC_FLAG_PATTERN.fullmatch(option)
+            ],
+            # Only the source is exported. -Xlog output may contain a sensitive path.
+            "gc_logging_candidates": [
+                {"source": source, "enabled": not gc_logging_disabled(option)}
+                for option, source in options if gc_logging_option(option)
             ],
         }
     return result
 
 
+def gc_logging_option(option):
+    """Recognize GC logging candidates without returning their raw value."""
+    # Keep this parser aligned with the managed-host module; tests cover both.
+    if option.startswith("-Xloggc:"):
+        return True
+    if not option.startswith("-Xlog:"):
+        return False
+    selector = option[len("-Xlog:"):].split(":", 1)[0]
+    return any(
+        tag.rstrip("*") in ("gc", "all")
+        for tag_set in selector.split(",")
+        for tag in tag_set.split("=", 1)[0].split("+")
+    )
+
+
+def gc_logging_disabled(option):
+    if option.startswith("-Xloggc:"):
+        return option == "-Xloggc:"
+    selector = option[len("-Xlog:"):].split(":", 1)[0]
+    return any(tag_set.endswith("=off") for tag_set in selector.split(","))
+
+
 class FilterModule:
     def filters(self):
         return {"jboss_eap_jvm_config": jboss_eap_jvm_config,
+                "jboss_eap_domain_audit": jboss_eap_domain_audit,
                 "jboss_eap_redact_report": jboss_eap_redact_report,
                 "jboss_eap_runtime_static": jboss_eap_runtime_static}
