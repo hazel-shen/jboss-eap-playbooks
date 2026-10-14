@@ -37,12 +37,12 @@ jboss-eap-playbooks/
 │   └── hosts.yml                       # Inventory 範例
 ├── playbooks/
 │   ├── jboss_eap_audit.yml             # A：設定檔與 OS 檢核入口
-│   └── jboss_eap_jvm_runtime_audit.yml # B：JVM 啟動參數檢核入口
+│   ├── jboss_eap_jvm_runtime_audit.yml # B：JVM 啟動參數檢核入口
+│   └── filter_plugins/jboss_eap_jvm.py # A、B 共用的 JVM 與報告 filter
 ├── requirements.txt                   # Execution Environment 的 Python 套件
 ├── roles/
 │   ├── jboss_eap_audit/                # A：靜態設定與 OS 檢核
 │   │   ├── defaults/main.yml          # A 的預設變數
-│   │   ├── filter_plugins/jboss_eap_jvm.py  # 整理 JVM 設定層級
 │   │   ├── tasks/
 │   │   │   ├── domain_xml.yml         # 讀取 domain.xml 設定
 │   │   │   ├── main.yml               # 排列 A 的檢核步驟
@@ -52,7 +52,6 @@ jboss-eap-playbooks/
 │   │   └── templates/report.md.j2     # A 的 Markdown 報告
 │   └── jboss_eap_jvm_runtime_audit/    # B：執行中 JVM 檢核
 │       ├── defaults/main.yml          # B 的預設變數
-│       ├── filter_plugins/jboss_eap_jvm.py  # 整理設定檔對照值
 │       ├── library/jboss_eap_runtime.py     # 對應程序並解析啟動參數
 │       ├── tasks/main.yml             # 排列 B 的檢核與報告步驟
 │       └── templates/report.md.j2     # B 的 Markdown 報告
@@ -69,7 +68,7 @@ jboss-eap-playbooks/
 4. 建立 Machine Credential，使用可讀取 JBoss 設定檔並可執行 privilege escalation 的帳號。
 5. 建立 Inventory，主機放入 `jboss_eap` group。
 6. 建立 Job Template，Playbook 選擇 `playbooks/jboss_eap_audit.yml`。
-7. 若要檢查 keystore，使用 encrypted survey 或 custom credential 傳入 `jboss_keystore_password`。
+7. 若要檢查 keystore，使用 encrypted survey 或 custom credential 傳入 `jboss_keystore_password`。如 EAP 使用的 Java 與 `PATH` 預設不同，可設定 `jboss_keytool_path` 為該 Java 的 `keytool` 完整路徑。
 8. 另建 JVM 執行狀態 Job Template，Playbook 選擇 `playbooks/jboss_eap_jvm_runtime_audit.yml`。使用可讀取 `/proc/<pid>/cmdline` 的帳號；若需 `become`，不需授權啟停服務。Inventory 中 primary、secondary 即使共用 `ansible_host`，也要分別指定實際的 `jboss_host_config` 與 `jboss_domain_config`。主機專屬路徑請放在 Inventory host variables，避免 Template Extra Variables 的共用值覆蓋兩個別名；兩者共用的 `jboss_eap_home` 可放在 Template Extra Variables。
 
 ## 本機測試
@@ -90,12 +89,15 @@ python3 -m unittest discover -s tests
 jboss_eap_home: /opt/jboss-eap
 jboss_user: jboss
 jboss_keystore_path: /opt/jboss-eap/domain/configuration/example.keystore
+jboss_keytool_path: /usr/lib/jvm/java-17-openjdk/bin/keytool
 jboss_keystore_password: "由 AAP 加密欄位注入"
 jboss_service_candidates:
   - jboss-eap.service
   - eap-domain-primary.service
   - eap-domain-secondary.service
 ```
+
+`jboss_keytool_path` 預設為 `keytool`，維持使用受管主機 `PATH` 的既有行為。
 
 若主機使用 `host-primary.xml` 作為 Domain Controller 設定，該檔案可能沒有 managed server。此時 `configured_servers: []` 只代表這份 host 設定檔沒有宣告 server。要盤點其他 host controller，請將其實際使用的設定檔指定給 `jboss_host_config`；同一台 OS 主機有多個 host controller 時，可在 Inventory 建立不同主機別名，分別指定 `jboss_host_config` 與 `jboss_domain_config`。
 

@@ -8,6 +8,10 @@ import re
 SERVER_MARKER = re.compile(r"^-D\[Server:([^\]]+)\]$")
 MEMORY = re.compile(r"^(\d+)([kKmMgGtT]?)$")
 SAFE_OPTIONS = ("-Xms", "-Xmx", "-XX:MaxDirectMemorySize=")
+POSSIBLE_JBOSS_COMM = re.compile(
+    r"^(?:java(?:[0-9._-].*)?|jboss(?:[._-].*)?|domain\.sh|standalone\.sh)$",
+    re.IGNORECASE,
+)
 
 
 def property_value(args, name):
@@ -150,7 +154,18 @@ def collect_proc():
         except FileNotFoundError:
             continue  # Process exited during the scan.
         except (PermissionError, OSError):
-            unreadable += 1
+            # comm is a short process name, not its (potentially sensitive) arguments.
+            # An unreadable identity remains ambiguous; a known non-JBoss process
+            # cannot be a duplicate controller or managed server.
+            try:
+                with open(os.path.join(entry.path, "comm"), "r", encoding="utf-8") as stream:
+                    comm = stream.read().strip()
+            except FileNotFoundError:
+                continue  # Process exited during the scan.
+            except (PermissionError, OSError):
+                comm = ""
+            if not comm or POSSIBLE_JBOSS_COMM.fullmatch(comm):
+                unreadable += 1
             continue
         if raw:
             args = [part.decode("utf-8", "replace") for part in raw.rstrip(b"\0").split(b"\0")]

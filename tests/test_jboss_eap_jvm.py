@@ -7,7 +7,7 @@ import unittest
 
 PLUGIN = (
     Path(__file__).resolve().parents[1]
-    / "roles/jboss_eap_audit/filter_plugins/jboss_eap_jvm.py"
+    / "playbooks/filter_plugins/jboss_eap_jvm.py"
 )
 spec = importlib.util.spec_from_file_location("jboss_eap_jvm", PLUGIN)
 module = importlib.util.module_from_spec(spec)
@@ -57,6 +57,12 @@ DOMAIN_XML = """\
 
 
 class JvmConfigTest(unittest.TestCase):
+    def test_shared_filter_registers_both_playbooks_filters(self):
+        self.assertEqual(set(module.FilterModule().filters()), {
+            "jboss_eap_jvm_config", "jboss_eap_redact_report",
+            "jboss_eap_runtime_static",
+        })
+
     def test_server_without_local_jvm_uses_matching_host_and_group_layers(self):
         host = HOST_XML.replace(
             '<jvm name="default"><heap max-size="3g"/></jvm>',
