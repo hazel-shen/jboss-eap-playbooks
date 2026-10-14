@@ -99,6 +99,7 @@
 - name: Count configured servers in host.xml
   community.general.xml:
     xmlstring: "{{ jboss_host_xml_raw.content | b64decode }}"
+    # community.general.xml evaluates this against the document node.
     xpath: "*[local-name()='host']/*[local-name()='servers']/*[local-name()='server']"
     count: true
   delegate_to: localhost
@@ -185,7 +186,7 @@
 - name: Inspect the configured keystore without exposing its password
   ansible.builtin.command:
     argv:
-      - keytool
+      - "{{ jboss_keytool_path }}"
       - -list
       - -v
       - -keystore
