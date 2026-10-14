@@ -41,12 +41,52 @@
 {% set heap = config.heap_sources %}
 {% set options = runtime.options | default({}) %}
 {% set comparison = runtime.comparison | default({}) %}
-| Heap 初始值 | {% if heap.get('size') %}`{{ heap['size'].value }}`（{{ heap['size'].source }}）{% else %}未指定{% endif %} | {% if options.get('xms') %}`-Xms{{ options.xms }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('xms', '未知／無法確認') }} |
-| Heap 最大值 | {% if heap.get('max-size') %}`{{ heap['max-size'].value }}`（{{ heap['max-size'].source }}）{% else %}未指定{% endif %} | {% if options.get('xmx') %}`-Xmx{{ options.xmx }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('xmx', '未知／無法確認') }} |
-| MaxDirectMemorySize | {% if config.max_direct_memory_candidates | length == 1 %}`{{ config.max_direct_memory_candidates[0].value }}`（{{ config.max_direct_memory_candidates[0].source }}）{% elif config.max_direct_memory_candidates | length > 1 %}多個設定檔候選值：{% for candidate in config.max_direct_memory_candidates %}`{{ candidate.value }}`（{{ candidate.source }}）{% if not loop.last %}、{% endif %}{% endfor %}{% else %}未指定{% endif %} | {% if options.get('max_direct_memory_size') %}`-XX:MaxDirectMemorySize={{ options.max_direct_memory_size }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('max_direct_memory_size', '未知／無法確認') }} |
-| MaxMetaspaceSize | {% if config.max_metaspace_candidates | length == 1 %}`{{ config.max_metaspace_candidates[0].value }}`（{{ config.max_metaspace_candidates[0].source }}）{% elif config.max_metaspace_candidates | length > 1 %}多個設定檔候選值{% else %}未指定{% endif %} | {% if options.get('max_metaspace_size') %}`-XX:MaxMetaspaceSize={{ options.max_metaspace_size }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('max_metaspace_size', '未知／無法確認') }} |
-| GC 旗標 | {% if config.gc_candidates | length == 1 %}`{{ config.gc_candidates[0].value }}`（{{ config.gc_candidates[0].source }}）{% elif config.gc_candidates | length > 1 %}多個設定檔候選值{% else %}未指定{% endif %} | {% if options.get('gc') %}`{{ options.gc }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('gc', '未知／無法確認') }} |
-| GC logging 選項 | {% if config.gc_logging_candidates | length == 1 %}{{ '已設定' if config.gc_logging_candidates[0].enabled else '關閉選項' }}（{{ config.gc_logging_candidates[0].source }}；內容隱藏）{% elif config.gc_logging_candidates | length > 1 %}多個設定檔候選值{% else %}未指定{% endif %} | {% if options.get('gc_logging') is sameas true %}找到相關啟動選項（輸出目標隱藏）{% elif options.get('gc_logging') is sameas false %}未找到相關啟動選項{% else %}未知／無法確認{% endif %} | {{ comparison.get('gc_logging', '未知／無法確認') }} |
+{% macro source_cell(value, source) -%}`{{ value }}`（{{ source }}）{%- endmacro %}
+{% macro candidate_cell(candidates, show_all=false) -%}
+  {%- if candidates | length == 1 -%}
+    {{ source_cell(candidates[0].value, candidates[0].source) }}
+  {%- elif candidates | length > 1 -%}
+    多個設定檔候選值
+    {%- if show_all -%}
+      ：{%- for candidate in candidates -%}
+        {{ source_cell(candidate.value, candidate.source) }}{{ '、' if not loop.last else '' }}
+      {%- endfor -%}
+    {%- endif -%}
+  {%- else -%}
+    未指定
+  {%- endif -%}
+{%- endmacro %}
+{% set xms_static = source_cell(heap['size'].value, heap['size'].source) if heap.get('size') else '未指定' -%}
+{% set xms_runtime = '`-Xms' ~ options.xms ~ '`' if options.get('xms') else '未知／無法確認' -%}
+| Heap 初始值 | {{ xms_static }} | {{ xms_runtime }} | {{ comparison.get('xms', '未知／無法確認') }} |
+{% set xmx_static = source_cell(heap['max-size'].value, heap['max-size'].source) if heap.get('max-size') else '未指定' -%}
+{% set xmx_runtime = '`-Xmx' ~ options.xmx ~ '`' if options.get('xmx') else '未知／無法確認' -%}
+| Heap 最大值 | {{ xmx_static }} | {{ xmx_runtime }} | {{ comparison.get('xmx', '未知／無法確認') }} |
+{% set direct_static = candidate_cell(config.max_direct_memory_candidates, show_all=true) -%}
+{% set direct_runtime = '`-XX:MaxDirectMemorySize=' ~ options.max_direct_memory_size ~ '`' if options.get('max_direct_memory_size') else '未知／無法確認' -%}
+| MaxDirectMemorySize | {{ direct_static }} | {{ direct_runtime }} | {{ comparison.get('max_direct_memory_size', '未知／無法確認') }} |
+{% set metaspace_static = candidate_cell(config.max_metaspace_candidates) -%}
+{% set metaspace_runtime = '`-XX:MaxMetaspaceSize=' ~ options.max_metaspace_size ~ '`' if options.get('max_metaspace_size') else '未知／無法確認' -%}
+| MaxMetaspaceSize | {{ metaspace_static }} | {{ metaspace_runtime }} | {{ comparison.get('max_metaspace_size', '未知／無法確認') }} |
+{% set gc_static = candidate_cell(config.gc_candidates) -%}
+{% set gc_runtime = '`' ~ options.gc ~ '`' if options.get('gc') else '未知／無法確認' -%}
+| GC 旗標 | {{ gc_static }} | {{ gc_runtime }} | {{ comparison.get('gc', '未知／無法確認') }} |
+{% if config.gc_logging_candidates | length == 1 -%}
+  {% set logging_candidate = config.gc_logging_candidates[0] -%}
+  {% set logging_static = ('已設定' if logging_candidate.enabled else '關閉選項') ~ '（' ~ logging_candidate.source ~ '；內容隱藏）' -%}
+{% elif config.gc_logging_candidates | length > 1 -%}
+  {% set logging_static = '多個設定檔候選值' -%}
+{% else -%}
+  {% set logging_static = '未指定' -%}
+{% endif -%}
+{% if options.get('gc_logging') is sameas true -%}
+  {% set logging_runtime = '找到相關啟動選項（輸出目標隱藏）' -%}
+{% elif options.get('gc_logging') is sameas false -%}
+  {% set logging_runtime = '未找到相關啟動選項' -%}
+{% else -%}
+  {% set logging_runtime = '未知／無法確認' -%}
+{% endif -%}
+| GC logging 選項 | {{ logging_static }} | {{ logging_runtime }} | {{ comparison.get('gc_logging', '未知／無法確認') }} |
 
 {% if runtime.status == '已對應' %}
 **允許輸出的啟動參數證據**
