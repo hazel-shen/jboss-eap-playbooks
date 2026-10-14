@@ -132,6 +132,34 @@ jboss_eap:
 
 ## PDF 指引差距與待辦 Checklist
 
+```mermaid
+flowchart LR
+    INV["Inventory<br/>host vars"]
+    OS["OS 狀態"]
+    CFG["host.xml / domain.xml"]
+    PROC["程序命令列（/proc）"]
+
+    A["A：設定檔檢核<br/>jboss_eap_audit"]
+    B["B：JVM 啟動參數檢核<br/>jboss_eap_jvm_runtime_audit"]
+
+    OUT["Markdown 報告<br/>AAP Job artifacts"]
+
+    INV --> A & B
+    OS --> A
+    CFG --> A & B
+    PROC --> B
+    A --> OUT
+    B --> OUT
+
+    classDef source fill:#F1EFE8,stroke:#5F5E5A,color:#2C2C2A
+    classDef playbook fill:#EEEDFE,stroke:#534AB7,color:#26215C
+    classDef output fill:#E1F5EE,stroke:#0F6E56,color:#04342C
+
+    class INV,OS,CFG,PROC source
+    class A,B playbook
+    class OUT output
+```
+
 對照 [`JBoss EAP 常見問題排查與資料收集指引.pdf`](JBoss%20EAP%20常見問題排查與資料收集指引.pdf)：
 
 - [x] **第一項 A：JVM 設定檔。** 2026-10-13 於 AAP 2.6／EAP 8.1 驗證：primary 無 managed server；secondary 找到 `server-one`、`server-two`，列出 group、JVM 設定層級與 Heap 來源。
