@@ -11,7 +11,7 @@
 
 - 不修改受管 JBoss EAP 主機。
 - OS 狀態優先使用 `ansible.builtin` module。
-- `host.xml` 與 `domain.xml` 先以 `slurp` 讀回，在 AAP Execution Environment 解析；A 使用 XML module，B 使用 Python XML filter，受管主機不必額外安裝 `lxml`。
+- `host.xml` 與 `domain.xml` 先以 `slurp` 讀回，在 AAP Execution Environment 解析；A 的 host.xml 使用 XML module，domain.xml 使用單次遍歷的 Python filter，B 使用 Python XML filter，受管主機不必額外安裝 `lxml`。
 - B 在受管主機唯讀取樣 `/proc/<pid>/cmdline`，僅保留程序對應證據、允許的記憶體與 GC 啟動參數；GC logging 輸出目標不寫入報告，也不輸出完整命令列。
 - Keystore 密碼不得存入 Git；由 AAP encrypted survey、custom credential 或 Ansible Vault 注入。
 - 每台主機產生獨立 Markdown 報告，並透過 `set_stats` 公布完整報告與摘要。

@@ -82,6 +82,63 @@ def _child(parent, name):
     return next(iter(_children(parent, name)), None)
 
 
+DOMAIN_AUDIT_SECTIONS = (
+    "server_groups", "datasources", "jdbc_drivers", "socket_binding_groups",
+    "handlers", "local_caches", "expression_filters", "response_headers",
+    "filters", "rewrites", "max_parameters", "timeout_settings",
+    "system_properties",
+)
+DOMAIN_ELEMENT_SECTIONS = {
+    "datasource": "datasources",
+    "socket-binding-group": "socket_binding_groups",
+    "handler": "handlers",
+    "local-cache": "local_caches",
+    "expression-filter": "expression_filters",
+    "response-header": "response_headers",
+    "filter": "filters",
+    "rewrite": "rewrites",
+}
+DOMAIN_PARENT_SECTIONS = {
+    ("server-groups", "server-group"): "server_groups",
+    ("drivers", "driver"): "jdbc_drivers",
+    ("system-properties", "property"): "system_properties",
+}
+
+
+def jboss_eap_domain_audit(domain_xml):
+    """Collect the former 13 XPath attribute selections in one XML traversal."""
+    result = {section: [] for section in DOMAIN_AUDIT_SECTIONS}
+    if not domain_xml:
+        return result
+    try:
+        root = ElementTree.fromstring(domain_xml)
+    except ElementTree.ParseError:
+        # The previous XML tasks used failed_when: false and yielded empty lists.
+        return result
+
+    pending = [(root, None)]
+    while pending:
+        element, parent_name = pending.pop()
+        name = _name(element)
+        pending.extend((child, name) for child in reversed(element))
+        sections = []
+        if name in DOMAIN_ELEMENT_SECTIONS:
+            sections.append(DOMAIN_ELEMENT_SECTIONS[name])
+        section = DOMAIN_PARENT_SECTIONS.get((parent_name, name))
+        if section:
+            sections.append(section)
+        if "max-parameters" in element.attrib:
+            sections.append("max_parameters")
+        if any(
+            key in element.attrib
+            for key in ("request-timeout", "no-request-timeout", "request-parse-timeout")
+        ):
+            sections.append("timeout_settings")
+        for section in sections:
+            result[section].append(dict(element.attrib))
+    return result
+
+
 def _jvms(parent):
     container = _child(parent, "jvms")
     if container is None:
@@ -272,5 +329,6 @@ def gc_logging_disabled(option):
 class FilterModule:
     def filters(self):
         return {"jboss_eap_jvm_config": jboss_eap_jvm_config,
+                "jboss_eap_domain_audit": jboss_eap_domain_audit,
                 "jboss_eap_redact_report": jboss_eap_redact_report,
                 "jboss_eap_runtime_static": jboss_eap_runtime_static}
