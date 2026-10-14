@@ -59,7 +59,8 @@ DOMAIN_XML = """\
 class JvmConfigTest(unittest.TestCase):
     def test_shared_filter_registers_both_playbooks_filters(self):
         self.assertEqual(set(module.FilterModule().filters()), {
-            "jboss_eap_jvm_config", "jboss_eap_redact_report",
+            "jboss_eap_jvm_config", "jboss_eap_domain_audit",
+            "jboss_eap_redact_report",
             "jboss_eap_runtime_static",
         })
 
