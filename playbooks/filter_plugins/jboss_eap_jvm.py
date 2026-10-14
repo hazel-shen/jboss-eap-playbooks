@@ -195,7 +195,30 @@ def jboss_eap_jvm_config(host_xml, domain_xml=""):
     return result
 
 
+def jboss_eap_runtime_static(config):
+    """Keep only numeric memory evidence needed for the runtime comparison."""
+    numeric = re.compile(r"^\d+[kKmMgGtT]?$")
+    result = {}
+    for name, server in config.items():
+        result[name] = {
+            "group": server["group"],
+            "heap_sources": {
+                key: {"value": (setting["value"] if numeric.fullmatch(setting["value"])
+                                else "未知／無法確認"), "source": setting["source"]}
+                for key, setting in server["heap_sources"].items()
+                if key in ("size", "max-size")
+            },
+            "max_direct_memory_candidates": [
+                {"value": (setting["value"] if numeric.fullmatch(setting["value"])
+                           else "未知／無法確認"), "source": setting["source"]}
+                for setting in server["max_direct_memory_candidates"]
+            ],
+        }
+    return result
+
+
 class FilterModule:
     def filters(self):
         return {"jboss_eap_jvm_config": jboss_eap_jvm_config,
-                "jboss_eap_redact_report": jboss_eap_redact_report}
+                "jboss_eap_redact_report": jboss_eap_redact_report,
+                "jboss_eap_runtime_static": jboss_eap_runtime_static}
