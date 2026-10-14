@@ -9,6 +9,59 @@ JVM_OPTION_PATTERN = re.compile(
     r"MaxMetaspaceSize=|[A-Za-z0-9]*GC[A-Za-z0-9]*=)|-Xlog:|-Xloggc:)"
 )
 DIRECT_MEMORY_PATTERN = re.compile(r"^-XX:MaxDirectMemorySize=(.+)$")
+SENSITIVE_KEY = (
+    r"[A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|credential|"
+    r"api[_-]?key|access[_-]?key|private[_-]?key)[A-Za-z0-9_.-]*"
+)
+SENSITIVE_QUOTED = re.compile(
+    rf"(?P<prefix>(?<![A-Za-z0-9_.-]){SENSITIVE_KEY}\s*[:=]\s*)"
+    r"(?P<quote>['\"`]).*?(?P=quote)", re.IGNORECASE
+)
+SENSITIVE_BARE = re.compile(
+    rf"(?P<prefix>(?<![A-Za-z0-9_.-]){SENSITIVE_KEY}\s*[:=]\s*)"
+    r"[^\s&;,)}\]\"'`]+", re.IGNORECASE
+)
+URI_USERINFO = re.compile(
+    r"(?P<scheme>\b[A-Za-z][A-Za-z0-9+.-]*://)[^/@\s<>`]+@"
+)
+ORACLE_USERINFO = re.compile(
+    r"(?P<prefix>\bjdbc:oracle:thin:)[^/@\s<>`]+/[^@\s<>`]+@",
+    re.IGNORECASE,
+)
+BEARER_TOKEN = re.compile(
+    r"(?P<prefix>\b(?:proxy-)?authorization\s*:\s*bearer\s+)\S+",
+    re.IGNORECASE,
+)
+URL_USER_PARAM = re.compile(
+    r"(?P<prefix>(?<![A-Za-z0-9_.-])(?:user(?:name|-name)?|uid|pass)\s*=)"
+    r"[^\s&;,)}\]\"'`]+", re.IGNORECASE
+)
+MARKDOWN_PROPERTY = re.compile(
+    r"(?P<prefix>^-\s*`(?P<key>[^`]+)`\s*=\s*`)[^`]*(?P<suffix>`)"
+)
+SENSITIVE_NAME = re.compile(SENSITIVE_KEY, re.IGNORECASE)
+
+
+def jboss_eap_redact_report(report):
+    """Remove common credentials from a rendered report before it is persisted."""
+    report = URI_USERINFO.sub(r"\g<scheme>***REDACTED***@", report)
+    report = ORACLE_USERINFO.sub(r"\g<prefix>***REDACTED***@", report)
+    report = BEARER_TOKEN.sub(r"\g<prefix>***REDACTED***", report)
+    report = SENSITIVE_QUOTED.sub(
+        lambda match: match.group("prefix") + match.group("quote")
+        + "***REDACTED***" + match.group("quote"), report
+    )
+    report = SENSITIVE_BARE.sub(r"\g<prefix>***REDACTED***", report)
+    safe_lines = []
+    for line in report.splitlines(keepends=True):
+        if "://" in line or "connection-url" in line.lower():
+            line = URL_USER_PARAM.sub(r"\g<prefix>***REDACTED***", line)
+        line = MARKDOWN_PROPERTY.sub(
+            lambda match: match.group("prefix") + "***REDACTED***" + match.group("suffix")
+            if SENSITIVE_NAME.search(match.group("key")) else match.group(0), line
+        )
+        safe_lines.append(line)
+    return "".join(safe_lines)
 
 
 def _name(element):
@@ -144,4 +197,5 @@ def jboss_eap_jvm_config(host_xml, domain_xml=""):
 
 class FilterModule:
     def filters(self):
-        return {"jboss_eap_jvm_config": jboss_eap_jvm_config}
+        return {"jboss_eap_jvm_config": jboss_eap_jvm_config,
+                "jboss_eap_redact_report": jboss_eap_redact_report}

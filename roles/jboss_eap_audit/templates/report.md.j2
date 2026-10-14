@@ -225,7 +225,7 @@
 
 ## System Properties
 
-為避免報告外洩機密，名稱疑似包含 `password`、`secret`、`token` 或 `credential` 的值會被遮蔽。
+報告寫檔及發佈至 AAP artifacts 前，會遮蔽常見機敏鍵值與 URL 中的帳密參數。
 
 {% for prop in jboss_domain_audit.system_properties | default([]) %}
 - `{{ prop.name | default('UNKNOWN') }}` = {% if prop.name | default('') | lower | regex_search('password|secret|token|credential') %}`***REDACTED***`{% else %}`{{ prop.value | default('') }}`{% endif %}

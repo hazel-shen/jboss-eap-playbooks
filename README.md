@@ -124,6 +124,7 @@ jboss_eap:
 
 - AAP：Job 的 **Output** 會顯示每台主機的可讀摘要。完整 Markdown 內容透過 `set_stats` 存在 Job API 的 `artifacts.jboss_eap_audit_<主機名>.report_markdown`；`report_path` 是執行端的檔案路徑，不是 AAP UI 的下載連結。
 - 本機：報告預設寫入 `reports/<inventory_hostname>-jboss-eap-audit.md`。
+- 靜態報告寫檔及發佈至 AAP artifacts 前，會遮蔽常見密碼、token 與 URL 帳密參數；仍請限制報告存取權限。
 - JVM 啟動參數：本機另寫入 `reports/<inventory_hostname>-jboss-eap-jvm-runtime-audit.md`；AAP artifact key 為 `jboss_eap_jvm_runtime_audit_<主機名>`，內含 `report_markdown`、`report_path` 與逐 server `summary`。`report_path` 位於 AAP 執行端的該次 Job 目錄，不是受管主機上的持久檔案。
 
 在 AAP 執行完後，從 Job 頁面取得 Job ID，於相同網站開啟 `/api/v2/jobs/<Job ID>/`，即可在 `artifacts` 找到完整報告。API 回傳的是 JSON；若需要排版後的 Markdown 檔，可將 `report_markdown` 欄位另存為 `.md` 檔。
