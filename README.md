@@ -38,13 +38,12 @@ jboss-eap-playbooks/
 ├── playbooks/
 │   ├── jboss_eap_audit.yml             # A：設定檔與 OS 檢核入口
 │   ├── jboss_eap_jvm_runtime_audit.yml # B：JVM 啟動參數檢核入口
-│   └── filter_plugins/jboss_eap_jvm.py # A、B 共用的 JVM 與報告 filter
+│   └── filter_plugins/jboss_eap_jvm.py # A、B 共用的 XML 與報告 filter
 ├── requirements.txt                   # Execution Environment 的 Python 套件
 ├── roles/
 │   ├── jboss_eap_audit/                # A：靜態設定與 OS 檢核
 │   │   ├── defaults/main.yml          # A 的預設變數
 │   │   ├── tasks/
-│   │   │   ├── domain_xml.yml         # 讀取 domain.xml 設定
 │   │   │   ├── main.yml               # 排列 A 的檢核步驟
 │   │   │   ├── os.yml                 # 帳號、套件與服務狀態
 │   │   │   ├── report.yml             # 產生報告與 AAP artifacts
@@ -56,6 +55,7 @@ jboss-eap-playbooks/
 │       ├── tasks/main.yml             # 排列 B 的檢核與報告步驟
 │       └── templates/report.md.j2     # B 的 Markdown 報告
 └── tests/
+    ├── test_jboss_eap_domain_audit.py  # domain.xml 查詢對照測試
     ├── test_jboss_eap_jvm.py           # JVM 設定檔解析測試
     └── test_jboss_eap_runtime.py       # 程序對應與參數解析測試
 ```
@@ -142,18 +142,22 @@ jboss_eap:
 
 ```mermaid
 flowchart LR
-    INV["Inventory<br/>host vars"]
+    INV["Inventory<br/>稽核主機與設定檔路徑"]
     OS["OS 狀態"]
     CFG["host.xml / domain.xml"]
+    AFILES["version.txt / jboss-eap.conf / keystore"]
     PROC["程序命令列（/proc）"]
 
-    A["A：設定檔檢核<br/>jboss_eap_audit"]
-    B["B：JVM 啟動參數檢核<br/>jboss_eap_jvm_runtime_audit"]
+    subgraph AUDIT["AAP 稽核（依 Inventory 指定目標與路徑）"]
+        A["A：設定檔與 OS 檢核<br/>jboss_eap_audit"]
+        B["B：JVM 啟動參數檢核<br/>jboss_eap_jvm_runtime_audit"]
+    end
 
     OUT["Markdown 報告<br/>AAP Job artifacts"]
 
-    INV --> A & B
+    INV --> AUDIT
     OS --> A
+    AFILES --> A
     CFG --> A & B
     PROC --> B
     A --> OUT
@@ -163,7 +167,7 @@ flowchart LR
     classDef playbook fill:#EEEDFE,stroke:#534AB7,color:#26215C
     classDef output fill:#E1F5EE,stroke:#0F6E56,color:#04342C
 
-    class INV,OS,CFG,PROC source
+    class INV,OS,CFG,AFILES,PROC source
     class A,B playbook
     class OUT output
 ```
