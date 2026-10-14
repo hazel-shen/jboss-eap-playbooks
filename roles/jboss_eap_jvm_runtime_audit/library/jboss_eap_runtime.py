@@ -8,6 +8,7 @@ import re
 SERVER_MARKER = re.compile(r"^-D\[Server:([^\]]+)\]$")
 MEMORY = re.compile(r"^(\d+)([kKmMgGtT]?)$")
 SAFE_OPTIONS = ("-Xms", "-Xmx", "-XX:MaxDirectMemorySize=")
+GC_FLAG = re.compile(r"^-XX:[+-]Use(?:Serial|Parallel|G1|Z|Shenandoah|Epsilon)GC$")
 POSSIBLE_JBOSS_COMM = re.compile(
     r"^(?:java(?:[0-9._-].*)?|jboss(?:[._-].*)?|domain\.sh|standalone\.sh)$",
     re.IGNORECASE,
@@ -60,18 +61,63 @@ def memory_bytes(value):
 def safe_options(args):
     result = {}
     for key, prefix in (("xms", "-Xms"), ("xmx", "-Xmx"),
-                        ("max_direct_memory_size", "-XX:MaxDirectMemorySize=")):
+                        ("max_direct_memory_size", "-XX:MaxDirectMemorySize="),
+                        ("max_metaspace_size", "-XX:MaxMetaspaceSize=")):
         values = [arg[len(prefix):] for arg in args if arg.startswith(prefix)]
         # A malformed or repeated option must not be reported as an effective value.
         result[key] = values[0] if len(values) == 1 and memory_bytes(values[0]) is not None else None
         result[key + "_evidence"] = [prefix + value for value in values if memory_bytes(value) is not None]
+    gc_flags = [arg for arg in args if GC_FLAG.fullmatch(arg)]
+    result["gc"] = gc_flags[0] if len(gc_flags) == 1 else None
+    result["gc_evidence"] = gc_flags
+    logging = [arg for arg in args if gc_logging_option(arg)]
+    disabled = any(arg == "-Xlog:disable" for arg in args)
+    if len(logging) == 1 and not disabled and not gc_logging_disabled(logging[0]):
+        result["gc_logging"] = True
+    elif not logging and not disabled:
+        result["gc_logging"] = False
+    else:
+        result["gc_logging"] = None
+    result["gc_logging_count"] = len(logging)
     return result
+
+
+def gc_logging_option(option):
+    if option.startswith("-Xloggc:"):
+        return True
+    if not option.startswith("-Xlog:"):
+        return False
+    selector = option[len("-Xlog:"):].split(":", 1)[0]
+    return any(
+        tag.rstrip("*") in ("gc", "all")
+        for tag_set in selector.split(",")
+        for tag in tag_set.split("=", 1)[0].split("+")
+    )
+
+
+def gc_logging_disabled(option):
+    if option.startswith("-Xloggc:"):
+        return option == "-Xloggc:"
+    selector = option[len("-Xlog:"):].split(":", 1)[0]
+    return any(tag_set.endswith("=off") for tag_set in selector.split(","))
 
 
 def compare(value, configured):
     if value is None or configured is None or memory_bytes(configured) is None:
         return "未知／無法確認"
     return "一致" if memory_bytes(value) == memory_bytes(configured) else "不一致"
+
+
+def compare_candidate(value, candidates):
+    if value is None or len(candidates) != 1:
+        return "未知／無法確認"
+    return "一致" if value == candidates[0]["value"] else "不一致"
+
+
+def compare_gc_logging(value, candidates):
+    if len(candidates) != 1 or not candidates[0]["enabled"] or value is None:
+        return "未知／無法確認"
+    return "已找到相關啟動選項（細節未比對）" if value else "未找到相關啟動選項"
 
 
 def evaluate(processes, server_config, home, config_path, unreadable=0,
@@ -123,12 +169,21 @@ def evaluate(processes, server_config, home, config_path, unreadable=0,
                 item["options"] = safe_options(process["args"])
                 heap = config.get("heap_sources", {})
                 candidates_xml = config.get("max_direct_memory_candidates", [])
+                metaspace_xml = config.get("max_metaspace_candidates", [])
                 item["comparison"] = {
                     "xms": compare(item["options"]["xms"], heap.get("size", {}).get("value")),
                     "xmx": compare(item["options"]["xmx"], heap.get("max-size", {}).get("value")),
                     "max_direct_memory_size": compare(
                         item["options"]["max_direct_memory_size"],
                         candidates_xml[0]["value"] if len(candidates_xml) == 1 else None),
+                    "max_metaspace_size": compare(
+                        item["options"]["max_metaspace_size"],
+                        metaspace_xml[0]["value"] if len(metaspace_xml) == 1 else None),
+                    "gc": compare_candidate(
+                        item["options"]["gc"], config.get("gc_candidates", [])),
+                    "gc_logging": compare_gc_logging(
+                        item["options"]["gc_logging"],
+                        config.get("gc_logging_candidates", [])),
                 }
                 if not domain_config_available:
                     item["comparison"] = {key: "未知／無法確認" for key in item["comparison"]}

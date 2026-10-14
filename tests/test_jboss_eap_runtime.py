@@ -60,7 +60,9 @@ class RuntimeTest(unittest.TestCase):
         found = self.evaluate(processes)
         self.assertEqual((found["controller_pid"], found["server_pid"]), (20, 50))
         self.assertEqual(found["comparison"], {
-            "xms": "一致", "xmx": "一致", "max_direct_memory_size": "一致"})
+            "xms": "一致", "xmx": "一致", "max_direct_memory_size": "一致",
+            "max_metaspace_size": "未知／無法確認", "gc": "未知／無法確認",
+            "gc_logging": "未知／無法確認"})
         self.assertNotIn("secret", str(found))
 
     def test_ambiguous_controller_or_server_is_unknown(self):
@@ -121,6 +123,47 @@ class RuntimeTest(unittest.TestCase):
     def test_missing_xml_candidate_stays_unknown(self):
         self.assertEqual(module.compare("256m", None), "未知／無法確認")
         self.assertEqual(module.compare("512m", "256m"), "不一致")
+
+    def test_gc_metaspace_and_logging_are_allowlisted(self):
+        static = filter_module.jboss_eap_runtime_static({"server-one": {
+            "group": "main", "heap_sources": {}, "max_direct_memory_candidates": [],
+            "layers": [{"source": "domain.xml / server-group", "options": [
+                "-XX:+UseG1GC", "-XX:MaxMetaspaceSize=512m",
+                "-Xlog:gc*:file=/tmp/password=xml-secret"]}],
+        }})
+        self.assertNotIn("xml-secret", str(static))
+        found = module.evaluate([
+            controller(20, SECONDARY, "host-secondary.xml"),
+            server(50, SECONDARY, "server-one", "-XX:+UseG1GC",
+                   "-XX:MaxMetaspaceSize=524288k",
+                   "-Xlog:gc*:file=/tmp/token=runtime-secret", "-Dpassword=secret")],
+            static, HOME, SECONDARY + "/configuration/host-secondary.xml"
+        )["servers"]["server-one"]
+        self.assertEqual(found["comparison"]["gc"], "一致")
+        self.assertEqual(found["comparison"]["max_metaspace_size"], "一致")
+        self.assertEqual(found["comparison"]["gc_logging"],
+                         "已找到相關啟動選項（細節未比對）")
+        self.assertNotIn("runtime-secret", str(found))
+        self.assertNotIn("secret", str(found))
+        self.assertEqual(found["options"]["gc_logging_count"], 1)
+
+    def test_repeated_or_disabled_gc_options_remain_unknown(self):
+        options = module.safe_options([
+            "-XX:+UseG1GC", "-XX:-UseParallelGC",
+            "-XX:MaxMetaspaceSize=512m", "-XX:MaxMetaspaceSize=1g",
+            "-Xlog:gc=debug:file=/tmp/one", "-Xlog:gc=off",
+        ])
+        self.assertIsNone(options["gc"])
+        self.assertIsNone(options["max_metaspace_size"])
+        self.assertIsNone(options["gc_logging"])
+        self.assertIsNone(module.safe_options(["-Xlog:gc=off"])["gc_logging"])
+        self.assertIsNone(module.safe_options(["-Xlog:disable"])["gc_logging"])
+        self.assertTrue(module.safe_options(["-Xloggc:/tmp/gc.log"])["gc_logging"])
+        self.assertFalse(module.safe_options(["-Xlog:safepoint"])["gc_logging"])
+        self.assertEqual(module.compare_gc_logging(
+            False, [{"enabled": True}]), "未找到相關啟動選項")
+        self.assertEqual(module.compare_candidate(
+            "-XX:+UseG1GC", [{"value": "-XX:+UseParallelGC"}]), "不一致")
 
     def test_static_evidence_never_exports_arbitrary_option_values(self):
         data = {"server-one": {"group": "main", "heap_sources": {

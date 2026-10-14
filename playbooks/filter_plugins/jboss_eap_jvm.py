@@ -9,6 +9,11 @@ JVM_OPTION_PATTERN = re.compile(
     r"MaxMetaspaceSize=|[A-Za-z0-9]*GC[A-Za-z0-9]*=)|-Xlog:|-Xloggc:)"
 )
 DIRECT_MEMORY_PATTERN = re.compile(r"^-XX:MaxDirectMemorySize=(.+)$")
+METASPACE_PATTERN = re.compile(r"^-XX:MaxMetaspaceSize=(.+)$")
+GC_FLAG_PATTERN = re.compile(
+    r"^-XX:[+-]Use(?:Serial|Parallel|G1|Z|Shenandoah|Epsilon)GC$"
+)
+MEMORY_VALUE = re.compile(r"^\d+[kKmMgGtT]?$")
 SENSITIVE_KEY = (
     r"[A-Za-z0-9_.-]*(?:password|passwd|pwd|secret|token|credential|"
     r"api[_-]?key|access[_-]?key|private[_-]?key)[A-Za-z0-9_.-]*"
@@ -196,25 +201,64 @@ def jboss_eap_jvm_config(host_xml, domain_xml=""):
 
 
 def jboss_eap_runtime_static(config):
-    """Keep only numeric memory evidence needed for the runtime comparison."""
-    numeric = re.compile(r"^\d+[kKmMgGtT]?$")
+    """Keep allowlisted comparison evidence without arbitrary JVM option values."""
     result = {}
     for name, server in config.items():
+        options = [
+            (option, layer["source"])
+            for layer in server.get("layers", []) for option in layer["options"]
+        ]
         result[name] = {
             "group": server["group"],
             "heap_sources": {
-                key: {"value": (setting["value"] if numeric.fullmatch(setting["value"])
+                key: {"value": (setting["value"] if MEMORY_VALUE.fullmatch(setting["value"])
                                 else "未知／無法確認"), "source": setting["source"]}
                 for key, setting in server["heap_sources"].items()
                 if key in ("size", "max-size")
             },
             "max_direct_memory_candidates": [
-                {"value": (setting["value"] if numeric.fullmatch(setting["value"])
+                {"value": (setting["value"] if MEMORY_VALUE.fullmatch(setting["value"])
                            else "未知／無法確認"), "source": setting["source"]}
                 for setting in server["max_direct_memory_candidates"]
             ],
+            "max_metaspace_candidates": [
+                {"value": (match.group(1) if MEMORY_VALUE.fullmatch(match.group(1))
+                           else "未知／無法確認"), "source": source}
+                for option, source in options
+                if (match := METASPACE_PATTERN.fullmatch(option))
+            ],
+            "gc_candidates": [
+                {"value": option, "source": source}
+                for option, source in options if GC_FLAG_PATTERN.fullmatch(option)
+            ],
+            # Only the source is exported. -Xlog output may contain a sensitive path.
+            "gc_logging_candidates": [
+                {"source": source, "enabled": not gc_logging_disabled(option)}
+                for option, source in options if gc_logging_option(option)
+            ],
         }
     return result
+
+
+def gc_logging_option(option):
+    """Recognize GC logging candidates without returning their raw value."""
+    if option.startswith("-Xloggc:"):
+        return True
+    if not option.startswith("-Xlog:"):
+        return False
+    selector = option[len("-Xlog:"):].split(":", 1)[0]
+    return any(
+        tag.rstrip("*") in ("gc", "all")
+        for tag_set in selector.split(",")
+        for tag in tag_set.split("=", 1)[0].split("+")
+    )
+
+
+def gc_logging_disabled(option):
+    if option.startswith("-Xloggc:"):
+        return option == "-Xloggc:"
+    selector = option[len("-Xlog:"):].split(":", 1)[0]
+    return any(tag_set.endswith("=off") for tag_set in selector.split(","))
 
 
 class FilterModule:

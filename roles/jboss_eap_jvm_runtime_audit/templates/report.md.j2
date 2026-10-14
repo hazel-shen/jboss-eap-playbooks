@@ -11,7 +11,7 @@
 
 ## 對應依據
 
-從 `host.xml` 取得 managed server 名稱；從 `/proc/<pid>/cmdline` 讀取 host controller 的 `--host-config`、`jboss.domain.base.dir`，以及 server JVM 的 `-D[Server:<name>]` 和相同 base directory。只在兩者各有唯一匹配程序時回報啟動參數。PID 是本次取樣的程序識別碼。報告只保留這些身分證據與 Heap／Direct Memory 選項，不保留完整命令列。
+從 `host.xml` 取得 managed server 名稱；從 `/proc/<pid>/cmdline` 讀取 host controller 的 `--host-config`、`jboss.domain.base.dir`，以及 server JVM 的 `-D[Server:<name>]` 和相同 base directory。只在兩者各有唯一匹配程序時回報啟動參數。PID 是本次取樣的程序識別碼。報告只保留允許的 JVM 參數證據；GC logging 輸出目標不顯示，不保留完整命令列。
 
 {% if jboss_runtime_host_xml.content is not defined %}
 **未知／無法確認：** 無法讀取 `{{ jboss_host_config }}`，因此無法建立 server 清單。
@@ -44,12 +44,15 @@
 | Heap 初始值 | {% if heap.get('size') %}`{{ heap['size'].value }}`（{{ heap['size'].source }}）{% else %}未指定{% endif %} | {% if options.get('xms') %}`-Xms{{ options.xms }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('xms', '未知／無法確認') }} |
 | Heap 最大值 | {% if heap.get('max-size') %}`{{ heap['max-size'].value }}`（{{ heap['max-size'].source }}）{% else %}未指定{% endif %} | {% if options.get('xmx') %}`-Xmx{{ options.xmx }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('xmx', '未知／無法確認') }} |
 | MaxDirectMemorySize | {% if config.max_direct_memory_candidates | length == 1 %}`{{ config.max_direct_memory_candidates[0].value }}`（{{ config.max_direct_memory_candidates[0].source }}）{% elif config.max_direct_memory_candidates | length > 1 %}多個設定檔候選值：{% for candidate in config.max_direct_memory_candidates %}`{{ candidate.value }}`（{{ candidate.source }}）{% if not loop.last %}、{% endif %}{% endfor %}{% else %}未指定{% endif %} | {% if options.get('max_direct_memory_size') %}`-XX:MaxDirectMemorySize={{ options.max_direct_memory_size }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('max_direct_memory_size', '未知／無法確認') }} |
+| MaxMetaspaceSize | {% if config.max_metaspace_candidates | length == 1 %}`{{ config.max_metaspace_candidates[0].value }}`（{{ config.max_metaspace_candidates[0].source }}）{% elif config.max_metaspace_candidates | length > 1 %}多個設定檔候選值{% else %}未指定{% endif %} | {% if options.get('max_metaspace_size') %}`-XX:MaxMetaspaceSize={{ options.max_metaspace_size }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('max_metaspace_size', '未知／無法確認') }} |
+| GC 旗標 | {% if config.gc_candidates | length == 1 %}`{{ config.gc_candidates[0].value }}`（{{ config.gc_candidates[0].source }}）{% elif config.gc_candidates | length > 1 %}多個設定檔候選值{% else %}未指定{% endif %} | {% if options.get('gc') %}`{{ options.gc }}`{% else %}未知／無法確認{% endif %} | {{ comparison.get('gc', '未知／無法確認') }} |
+| GC logging 選項 | {% if config.gc_logging_candidates | length == 1 %}{{ '已設定' if config.gc_logging_candidates[0].enabled else '關閉選項' }}（{{ config.gc_logging_candidates[0].source }}；內容隱藏）{% elif config.gc_logging_candidates | length > 1 %}多個設定檔候選值{% else %}未指定{% endif %} | {% if options.get('gc_logging') is sameas true %}找到相關啟動選項（輸出目標隱藏）{% elif options.get('gc_logging') is sameas false %}未找到相關啟動選項{% else %}未知／無法確認{% endif %} | {{ comparison.get('gc_logging', '未知／無法確認') }} |
 
 {% if runtime.status == '已對應' %}
-**允許輸出的原始啟動參數證據**
+**允許輸出的啟動參數證據**
 
 ```text
-{{ (options.get('xms_evidence', []) + options.get('xmx_evidence', []) + options.get('max_direct_memory_size_evidence', [])) | join('\n') }}
+{{ (options.get('xms_evidence', []) + options.get('xmx_evidence', []) + options.get('max_direct_memory_size_evidence', []) + options.get('max_metaspace_size_evidence', []) + options.get('gc_evidence', [])) | join('\n') }}
 ```
 {% endif %}
 
@@ -59,5 +62,6 @@
 ## 判讀限制
 
 - 缺少啟動選項、重複選項、無權讀取或無法唯一對應時，值與對照皆標示「未知／無法確認」；不得視為 JVM 預設值。
+- GC logging 只核對是否有相關啟動選項，不比對標籤、層級或輸出目標，也不宣稱記錄已成功寫入。
 - XML 的 `MaxDirectMemorySize` 若有多層候選值，此報告不推測最後覆寫順序。設定檔與啟動參數一致，只代表兩份可見證據相符，不等於已由 JVM 管理介面確認有效記憶體上限。
 - 這是單次程序取樣；PID 與參數可能在報告產生後改變。
