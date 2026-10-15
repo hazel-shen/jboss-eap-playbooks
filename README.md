@@ -142,34 +142,66 @@ jboss_eap:
 
 ```mermaid
 flowchart LR
-    INV["Inventory<br/>稽核主機與設定檔路徑"]
-    OS["OS 狀態"]
-    CFG["host.xml / domain.xml"]
-    AFILES["version.txt / jboss-eap.conf / keystore"]
-    PROC["程序命令列（/proc）"]
+    I["Inventory<br/>primary、secondary 主機別名"]
+    X["host.xml / domain.xml"]
+    P["OS 程序<br/>/proc/.../cmdline"]
+    MC["Management CLI／JMX<br/>（新資料來源）"]
+    SL["server.log<br/>（新資料來源）"]
 
-    subgraph AUDIT["AAP 稽核（依 Inventory 指定目標與路徑）"]
-        A["A：設定檔與 OS 檢核<br/>jboss_eap_audit"]
-        B["B：JVM 啟動參數檢核<br/>jboss_eap_jvm_runtime_audit"]
+    subgraph A["第一項 A：設定檔檢核（待驗證 ③）"]
+        PA["playbooks/jboss_eap_audit.yml"]
+        RA["roles/jboss_eap_audit<br/>OS、XML、JVM 設定層級"]
+        AU["⑦ Undertow／IO worker 盤點"]
+        AV["⑧ 升級準備盤點<br/>EAP update level、JDK、OS"]
+        PA --> RA
+        RA -.-> AU
+        RA -.-> AV
     end
 
-    OUT["Markdown 報告<br/>AAP Job artifacts"]
+    subgraph B["第一項 B：JVM 啟動參數檢核（待驗證 ①）"]
+        PB["playbooks/jboss_eap_jvm_runtime_audit.yml"]
+        RB["roles/jboss_eap_jvm_runtime_audit<br/>程序對應、Heap / Direct Memory 比對"]
+        PB --> RB
+    end
 
-    INV --> AUDIT
-    OS --> A
-    AFILES --> A
-    CFG --> A & B
-    PROC --> B
-    A --> OUT
-    B --> OUT
+    subgraph C["Runtime 指標（待辦，新唯讀 playbook）"]
+        DB["④ Direct Buffer<br/>count、memory-used、total-capacity"]
+        TC["⑤ Thread churn<br/>thread 數、累計啟動數、uptime"]
+    end
 
-    classDef source fill:#F1EFE8,stroke:#5F5E5A,color:#2C2C2A
-    classDef playbook fill:#EEEDFE,stroke:#534AB7,color:#26215C
-    classDef output fill:#E1F5EE,stroke:#0F6E56,color:#04342C
+    I --> PA
+    I --> PB
+    I -.-> C
+    X --> RA
+    X --> RB
+    P --> RB
+    MC -.-> DB
+    MC -.-> TC
+    RB -.->|"server 對應、MaxDirectMemorySize"| C
 
-    class INV,OS,CFG,AFILES,PROC source
-    class A,B playbook
-    class OUT output
+    RA --> OA["A 的 Markdown 報告<br/>（待驗證 ②）"]
+    AU -.-> OA
+    AV -.-> OA
+    RB --> OB["B 的 Markdown 報告<br/>（待驗證 ②）"]
+    C -.-> OC["C 的 Markdown 報告"]
+    OA --> API["AAP Job artifacts"]
+    OB --> API
+    OC -.-> API
+
+    subgraph TR["⑥ 趨勢與告警（待辦）"]
+        HIS["歷史取樣、門檻告警"]
+        LOG["OOM log 檢查"]
+    end
+
+    API -.-> HIS
+    SL -.-> LOG
+    HIS -.-> EV["⑨ 事件處置<br/>heap dump、suspend、restart<br/>（變更型，另行觸發）"]
+    LOG -.-> EV
+
+    classDef todo fill:transparent,stroke:#888780,stroke-dasharray:5 4,color:#5F5E5A
+    class MC,SL,AU,AV,DB,TC,OC,HIS,LOG,EV todo
+    style C fill:transparent,stroke:#888780,stroke-width:1.5px,stroke-dasharray:6 4
+    style TR fill:transparent,stroke:#888780,stroke-width:1.5px,stroke-dasharray:6 4
 ```
 
 以下項目對照本機保存的《JBoss EAP 常見問題排查與資料收集指引.pdf》整理；該 PDF 由 `.gitignore` 排除，不隨 repository 提供。
