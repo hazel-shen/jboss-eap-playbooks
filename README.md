@@ -1,6 +1,6 @@
-# JBoss EAP Domain Mode 唯讀檢核
+# JBoss EAP Playbooks
 
-本專案提供兩支可由 Ansible Automation Platform（AAP）執行的獨立唯讀 Playbook：第一項 A 盤點 JBoss EAP 與 JVM 設定檔，第一項 B 對應執行中的 managed server JVM 並核對啟動參數。
+本專案目前提供兩支可由 Ansible Automation Platform（AAP）執行的獨立唯讀 Playbook：第一項 A 盤點 JBoss EAP 與 JVM 設定檔，第一項 B 對應執行中的 managed server JVM 並核對啟動參數。
 
 ## 目前使用環境
 
