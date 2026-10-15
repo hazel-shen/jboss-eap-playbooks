@@ -198,10 +198,20 @@ flowchart LR
     HIS -.-> EV["⑨ 事件處置<br/>heap dump、suspend、restart<br/>（變更型，另行觸發）"]
     LOG -.-> EV
 
-    classDef todo fill:transparent,stroke:#888780,stroke-dasharray:5 4,color:#5F5E5A
+    classDef source fill:#F1EFE8,stroke:#5F5E5A,color:#2C2C2A
+    classDef playbook fill:#EEEDFE,stroke:#534AB7,color:#26215C
+    classDef output fill:#E1F5EE,stroke:#0F6E56,color:#04342C
+    classDef todo fill:#FAEEDA,stroke:#BA7517,color:#633806,stroke-dasharray:5 4
+
+    class I,X,P source
+    class PA,RA,PB,RB playbook
+    class OA,OB,API output
     class MC,SL,AU,AV,DB,TC,OC,HIS,LOG,EV todo
-    style C fill:transparent,stroke:#888780,stroke-width:1.5px,stroke-dasharray:6 4
-    style TR fill:transparent,stroke:#888780,stroke-width:1.5px,stroke-dasharray:6 4
+
+    style A fill:#FAFAFF,stroke:#534AB7,color:#26215C
+    style B fill:#FAFAFF,stroke:#534AB7,color:#26215C
+    style C fill:#FFFCF5,stroke:#BA7517,color:#633806,stroke-width:1.5px,stroke-dasharray:6 4
+    style TR fill:#FFFCF5,stroke:#BA7517,color:#633806,stroke-width:1.5px,stroke-dasharray:6 4
 ```
 
 以下項目對照本機保存的《JBoss EAP 常見問題排查與資料收集指引.pdf》整理；該 PDF 由 `.gitignore` 排除，不隨 repository 提供。
