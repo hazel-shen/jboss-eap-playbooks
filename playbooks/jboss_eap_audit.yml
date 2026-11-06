@@ -4,6 +4,16 @@
   gather_facts: true
   become: true
 
+  pre_tasks:
+    - name: Check effective execution identity
+      ansible.builtin.command: id
+      register: execution_identity
+      changed_when: false
+
+    - name: Show effective execution identity
+      ansible.builtin.debug:
+        var: execution_identity.stdout
+        
   roles:
     - role: jboss_eap_audit
 
